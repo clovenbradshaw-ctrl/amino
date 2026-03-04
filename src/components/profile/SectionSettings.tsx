@@ -1,5 +1,6 @@
 import React from 'react';
 import type { LayoutSectionItem } from './ProfileLayoutBuilder';
+import '../../styles/profile-builder.css';
 
 interface Props {
   section: LayoutSectionItem;
@@ -10,7 +11,6 @@ interface Props {
 export default function SectionSettings({ section, onUpdate, onClose }: Props) {
   const handleColumnChange = (columns: number) => {
     const currentFields = section.fields;
-    // Adjust fields array to match column count
     const newFields: typeof currentFields = [];
     for (let i = 0; i < columns; i++) {
       newFields.push(currentFields[i] || []);
@@ -26,33 +26,44 @@ export default function SectionSettings({ section, onUpdate, onClose }: Props) {
 
   return (
     <div className="section-settings">
-      <div className="ss-row">
-        <label>Columns</label>
-        <div className="ss-column-options">
-          {[1, 2, 3, 4].map(n => (
-            <button
-              key={n}
-              className={`ss-col-btn ${section.columns === n ? 'ss-col-btn--active' : ''}`}
-              onClick={() => handleColumnChange(n)}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
+      <div className="section-settings__title">Section Settings</div>
+
+      <label className="section-settings__label">Name</label>
+      <input
+        className="section-settings__input"
+        type="text"
+        value={section.title}
+        onChange={e => onUpdate({ title: e.target.value })}
+      />
+
+      <label className="section-settings__label" style={{ marginBottom: 6 }}>Columns</label>
+      <div className="section-settings__col-row">
+        {[1, 2, 3, 4].map(n => (
+          <button
+            key={n}
+            className={`section-settings__col-btn${section.columns === n ? ' section-settings__col-btn--active' : ''}`}
+            onClick={() => handleColumnChange(n)}
+          >
+            {n}
+          </button>
+        ))}
       </div>
 
-      <div className="ss-row">
-        <label>Title</label>
-        <input
-          type="text"
-          value={section.title}
-          onChange={e => onUpdate({ title: e.target.value })}
-          className="ss-input"
-        />
+      <label className="section-settings__label" style={{ marginBottom: 6 }}>Section Width</label>
+      <div className="section-settings__width-row">
+        {([['full', 'Full'], ['half', '\u00BD'], ['third', '\u2153']] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className={`section-settings__width-btn${(section.width || 'full') === value ? ' section-settings__width-btn--active' : ''}`}
+            onClick={() => onUpdate({ width: value })}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      <div className="ss-row">
-        <label>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666', cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={section.collapsed || false}
@@ -62,7 +73,11 @@ export default function SectionSettings({ section, onUpdate, onClose }: Props) {
         </label>
       </div>
 
-      <button className="ss-close" onClick={onClose}>Done</button>
+      <div className="section-settings__footer">
+        <button className="section-settings__close-btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
     </div>
   );
 }
