@@ -6,12 +6,24 @@
 // access token passed as a query parameter (GET) or Authorization header.
 //
 // Endpoints:
-//   GET /amino-tables             — Fetch table metadata
-//   GET /amino-records?tableId=X  — Fetch all records for a table
+//   GET /amino-tables                          — Fetch table metadata
+//   GET /amino-records?tableId=X               — Fetch all records for a table
 //   GET /amino-records-since?tableId=X&since=T — Incremental sync
+//   GET /amino-record?recordId=X               — Single record with full details
+//   GET /amino-events-set?set=X                — Events filtered by set
+//   GET /amino-events-since?since=T            — Events since timestamp
+//   GET /amino-events-record?recordId=X        — Events for a record
 // =============================================================================
 
-import type { AminoTable, RecordsResponse, TablesResponse } from './types';
+import type {
+  AminoTable,
+  EventsRecordResponse,
+  EventsSetResponse,
+  EventsSinceResponse,
+  RecordsResponse,
+  SingleRecordResponse,
+  TablesResponse,
+} from './types';
 
 const WEBHOOK_BASE = 'https://n8n.intelechia.com/webhook';
 const MAX_RETRIES = 2;
@@ -21,7 +33,8 @@ type ApiIntent =
   | 'metadataSync'
   | 'fullBackfill'
   | 'incrementalBackfill'
-  | 'onlineRead';
+  | 'onlineRead'
+  | 'eventQuery';
 
 /**
  * Internal fetch wrapper with retry logic and dual auth strategies.
@@ -208,5 +221,88 @@ export async function fetchRecordsSince(
       encodeURIComponent(since),
     accessToken,
     'incrementalBackfill',
+  );
+}
+
+// =============================================================================
+// Single Record Lookup
+// =============================================================================
+
+/**
+ * Fetch a single record with full details from /amino-record.
+ *
+ * @param recordId    - Record ID to look up
+ * @param accessToken - Matrix access token
+ * @returns SingleRecordResponse with record or error
+ */
+export async function fetchRecord(
+  recordId: string,
+  accessToken: string,
+): Promise<SingleRecordResponse> {
+  return apiFetch(
+    '/amino-record?recordId=' + encodeURIComponent(recordId),
+    accessToken,
+    'onlineRead',
+  );
+}
+
+// =============================================================================
+// Event Log Queries
+// =============================================================================
+
+/**
+ * Fetch events for a given set from /amino-events-set.
+ *
+ * @param set         - Event set name
+ * @param accessToken - Matrix access token
+ * @param limit       - Max events to return (default 500)
+ * @returns EventsSetResponse with events array
+ */
+export async function fetchEventsBySet(
+  set: string,
+  accessToken: string,
+  limit?: number,
+): Promise<EventsSetResponse> {
+  let path = '/amino-events-set?set=' + encodeURIComponent(set);
+  if (limit) path += '&limit=' + limit;
+  return apiFetch(path, accessToken, 'eventQuery');
+}
+
+/**
+ * Fetch events since a timestamp from /amino-events-since.
+ *
+ * @param since       - ISO timestamp cursor
+ * @param accessToken - Matrix access token
+ * @param set         - Optional set filter
+ * @param limit       - Max events to return (default 500)
+ * @returns EventsSinceResponse with events array
+ */
+export async function fetchEventsSince(
+  since: string,
+  accessToken: string,
+  set?: string,
+  limit?: number,
+): Promise<EventsSinceResponse> {
+  let path = '/amino-events-since?since=' + encodeURIComponent(since);
+  if (set) path += '&set=' + encodeURIComponent(set);
+  if (limit) path += '&limit=' + limit;
+  return apiFetch(path, accessToken, 'eventQuery');
+}
+
+/**
+ * Fetch events for a specific record from /amino-events-record.
+ *
+ * @param recordId    - Record ID to fetch events for
+ * @param accessToken - Matrix access token
+ * @returns EventsRecordResponse with events array
+ */
+export async function fetchEventsByRecord(
+  recordId: string,
+  accessToken: string,
+): Promise<EventsRecordResponse> {
+  return apiFetch(
+    '/amino-events-record?recordId=' + encodeURIComponent(recordId),
+    accessToken,
+    'eventQuery',
   );
 }
