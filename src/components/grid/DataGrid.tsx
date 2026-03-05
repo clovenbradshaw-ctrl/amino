@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchema } from '@/state/SchemaContext';
+import { useData } from '@/state/DataContext';
 import { useView, createDefaultView, type SortConfig as SortCfg, type FilterConfig } from '@/state/ViewContext';
 import type { FieldDef } from '@/utils/field-types';
 import { isEditable, formatCellValue } from '@/utils/field-types';
@@ -114,12 +115,12 @@ function applyFilter(value: any, operator: string, filterValue: any): boolean {
 
 export function DataGrid({ tableId }: DataGridProps) {
   const schema = useSchema();
+  const data = useData();
   const view = useView();
   const { currentView, setCurrentView, addSort, removeSort, setFieldWidth } = view;
 
   // State
-  const [records, setRecords] = useState<AminoRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [localRecords, setLocalRecords] = useState<AminoRecord[]>([]);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ recordId: string; fieldId: string } | null>(null);
   const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
@@ -130,31 +131,39 @@ export function DataGrid({ tableId }: DataGridProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load fields & initialize view
+  // Load fields & records
   useEffect(() => {
     schema.loadFieldsForTable(tableId);
-  }, [tableId, schema.loadFieldsForTable]);
+    data.loadRecords(tableId);
+  }, [tableId, schema.loadFieldsForTable, data.loadRecords]);
 
   const allFields = schema.getFields(tableId);
+  const loading = data.isLoading(tableId);
+
+  // Bridge DataContext records (recordId) to AminoRecord (id) format
+  const dataRecords = data.getRecords(tableId);
+  const records = useMemo(() => {
+    if (dataRecords.length > 0) {
+      return dataRecords.map(r => ({
+        id: r.recordId,
+        tableId: r.tableId,
+        tableName: '',
+        fields: r.fields,
+        lastSynced: new Date().toISOString(),
+      }));
+    }
+    // Fallback to mock data when no real records are available (dev mode)
+    if (allFields.length > 0 && !loading) {
+      return generateMockRecords(tableId, allFields);
+    }
+    return localRecords;
+  }, [dataRecords, allFields, loading, tableId, localRecords]);
 
   useEffect(() => {
     if (!currentView || currentView.tableId !== tableId) {
       setCurrentView(createDefaultView(tableId));
     }
   }, [tableId, currentView, setCurrentView]);
-
-  // Generate mock data when fields are available
-  useEffect(() => {
-    if (allFields.length > 0) {
-      setLoading(true);
-      // Simulate async fetch
-      const timer = setTimeout(() => {
-        setRecords(generateMockRecords(tableId, allFields));
-        setLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [tableId, allFields]);
 
   // Visible fields (excluding hidden)
   const visibleFields = useMemo(() => {
@@ -315,43 +324,61 @@ export function DataGrid({ tableId }: DataGridProps) {
     (recordId: string, fieldId: string, value: any) => {
       const field = allFields.find(f => f.fieldId === fieldId);
       if (!field) return;
-      setRecords(prev =>
-        prev.map(r =>
-          r.id === recordId
-            ? { ...r, fields: { ...r.fields, [field.fieldName]: value } }
-            : r,
-        ),
-      );
+      // Update in DataContext if real records exist
+      if (dataRecords.length > 0) {
+        data.updateRecord(tableId, recordId, { [field.fieldName]: value });
+      } else {
+        setLocalRecords(prev =>
+          prev.map(r =>
+            r.id === recordId
+              ? { ...r, fields: { ...r.fields, [field.fieldName]: value } }
+              : r,
+          ),
+        );
+      }
       setEditingCell(null);
     },
-    [allFields],
+    [allFields, dataRecords.length, data, tableId],
   );
 
   const handleExpandedSave = useCallback(
     (recordId: string, updates: Record<string, any>) => {
-      setRecords(prev =>
-        prev.map(r =>
-          r.id === recordId
-            ? { ...r, fields: { ...r.fields, ...updates } }
-            : r,
-        ),
-      );
+      if (dataRecords.length > 0) {
+        data.updateRecord(tableId, recordId, updates);
+      } else {
+        setLocalRecords(prev =>
+          prev.map(r =>
+            r.id === recordId
+              ? { ...r, fields: { ...r.fields, ...updates } }
+              : r,
+          ),
+        );
+      }
     },
-    [],
+    [dataRecords.length, data, tableId],
   );
 
   const handleCreateRecord = useCallback(
     (values: Record<string, any>) => {
-      const newRecord: AminoRecord = {
-        id: `rec${generateId()}`,
-        tableId,
-        tableName: '',
-        fields: values,
-        lastSynced: new Date().toISOString(),
-      };
-      setRecords(prev => [...prev, newRecord]);
+      const newId = `rec${generateId()}`;
+      if (dataRecords.length > 0) {
+        data.addRecord(tableId, {
+          tableId,
+          recordId: newId,
+          fields: values,
+        });
+      } else {
+        const newRecord: AminoRecord = {
+          id: newId,
+          tableId,
+          tableName: '',
+          fields: values,
+          lastSynced: new Date().toISOString(),
+        };
+        setLocalRecords(prev => [...prev, newRecord]);
+      }
     },
-    [tableId],
+    [tableId, dataRecords.length, data],
   );
 
   const handleContextMenu = useCallback(

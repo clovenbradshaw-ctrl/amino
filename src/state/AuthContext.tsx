@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { setAccessToken } from '../services/matrix/client';
 
 export interface MatrixSession {
   userId: string;
@@ -38,6 +39,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const saved = localStorage.getItem(SESSION_KEY);
       if (saved) {
         const session = JSON.parse(saved) as MatrixSession;
+        // Sync access token with Matrix client module
+        setAccessToken(session.accessToken);
         setState({ session, loading: false, error: null });
       } else {
         setState(s => ({ ...s, loading: false }));
@@ -79,6 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         homeserverUrl: HOMESERVER,
       };
 
+      // Sync access token with Matrix client module
+      setAccessToken(data.access_token);
+
       // Fetch display name
       try {
         const profileResp = await fetch(
@@ -112,6 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Continue logout even if server call fails
       }
     }
+    // Clear access token from Matrix client module
+    setAccessToken(null);
     localStorage.removeItem(SESSION_KEY);
     setState({ session: null, loading: false, error: null });
   }, [state.session]);
