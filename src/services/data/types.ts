@@ -253,6 +253,56 @@ export interface RecordsResponse {
 }
 
 // =============================================================================
+// Event Log API Response Types
+// =============================================================================
+
+/** A single event from the amino.event_log table. */
+export interface AminoEvent {
+  id: number;
+  recordId: string;
+  createdAt: string;
+  operator: string;
+  payload: any;
+  uuid: string;
+  set: string;
+}
+
+/** Response from /amino-events-set. */
+export interface EventsSetResponse {
+  set: string;
+  count: number;
+  events: AminoEvent[];
+}
+
+/** Response from /amino-events-since. */
+export interface EventsSinceResponse {
+  since: string;
+  count: number;
+  events: AminoEvent[];
+}
+
+/** Response from /amino-events-record. */
+export interface EventsRecordResponse {
+  recordId: string;
+  count: number;
+  events: AminoEvent[];
+}
+
+/** Response from /amino-record (single record with full details). */
+export interface SingleRecordResponse {
+  record?: {
+    id: string;
+    tableId: string;
+    tableName: string;
+    fields: Record<string, any> | string;
+    matrixRoomId: string;
+    lastSynced: string;
+    eventCount: number;
+  };
+  error?: string;
+}
+
+// =============================================================================
 // Event Content — Wire format for Matrix EO events
 // =============================================================================
 
