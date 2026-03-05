@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Amino</title>
+    <script>
+      // GitHub Pages SPA redirect: rewrites the path into a hash-based URL
+      // so that the SPA router can pick it up after index.html loads.
+      var path = window.location.pathname.replace('/amino/', '/');
+      window.location.replace(
+        window.location.origin + '/amino/#' + path + window.location.search
+      );
+    </script>
+  </head>
+  <body></body>
+</html>
