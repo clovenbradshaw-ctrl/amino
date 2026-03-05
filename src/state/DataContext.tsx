@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useAuth } from './AuthContext';
+import { fetchRecords as apiFetchRecords } from '../services/data/api';
 
 export interface AminoRecord {
   tableId: string;
@@ -31,9 +33,11 @@ interface DataContextValue extends DataState {
 
 const DataContext = createContext<DataContextValue | null>(null);
 
-const WEBHOOK_BASE = '/webhook';
-
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const { session } = useAuth();
+  const tokenRef = useRef(session?.accessToken);
+  tokenRef.current = session?.accessToken;
+
   const [state, setState] = useState<DataState>({
     recordsByTable: {},
     loading: {},
@@ -46,6 +50,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const loadRecords = useCallback(async (tableId: string) => {
     if (inFlight.current[tableId]) return;
+    const token = tokenRef.current;
+    if (!token) return;
     inFlight.current[tableId] = true;
 
     setState(s => ({
@@ -55,9 +61,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }));
 
     try {
-      const resp = await fetch(`${WEBHOOK_BASE}/amino-records?tableId=${encodeURIComponent(tableId)}`);
-      if (!resp.ok) throw new Error(`Failed to fetch records: ${resp.status}`);
-      const data = await resp.json();
+      const data = await apiFetchRecords(tableId, token);
 
       // Normalize records — handle different response shapes
       let rawRecords: any[] = [];
