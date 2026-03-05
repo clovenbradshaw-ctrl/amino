@@ -32,7 +32,7 @@ interface SchemaContextValue extends SchemaState {
 
 const SchemaContext = createContext<SchemaContextValue | null>(null);
 
-const WEBHOOK_BASE = '/webhook';
+const WEBHOOK_BASE = 'https://n8n.intelechia.com/webhook';
 
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SchemaState>({

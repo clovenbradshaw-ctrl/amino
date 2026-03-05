@@ -31,7 +31,7 @@ interface DataContextValue extends DataState {
 
 const DataContext = createContext<DataContextValue | null>(null);
 
-const WEBHOOK_BASE = '/webhook';
+const WEBHOOK_BASE = 'https://n8n.intelechia.com/webhook';
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<DataState>({
