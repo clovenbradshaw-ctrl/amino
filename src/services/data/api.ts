@@ -224,6 +224,24 @@ export async function fetchRecordsSince(
   );
 }
 
+/**
+ * Fetch field definitions for a table from /amino-fields.
+ *
+ * @param tableId     - Table ID
+ * @param accessToken - Matrix access token
+ * @returns Raw field data (array or object with .fields property)
+ */
+export async function fetchFields(
+  tableId: string,
+  accessToken: string,
+): Promise<any> {
+  return apiFetch(
+    '/amino-fields?tableId=' + encodeURIComponent(tableId),
+    accessToken,
+    'metadataSync',
+  );
+}
+
 // =============================================================================
 // Single Record Lookup
 // =============================================================================

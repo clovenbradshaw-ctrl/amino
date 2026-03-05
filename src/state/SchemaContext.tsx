@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import type { FieldDef, FieldType } from '../utils/field-types';
+import { useAuth } from './AuthContext';
+import { fetchTables as apiFetchTables, fetchFields as apiFetchFields } from '../services/data/api';
 
 export interface TableInfo {
   tableId: string;
@@ -32,9 +34,11 @@ interface SchemaContextValue extends SchemaState {
 
 const SchemaContext = createContext<SchemaContextValue | null>(null);
 
-const WEBHOOK_BASE = '/webhook';
-
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
+  const { session } = useAuth();
+  const tokenRef = useRef(session?.accessToken);
+  tokenRef.current = session?.accessToken;
+
   const [state, setState] = useState<SchemaState>({
     tables: [],
     fieldsByTable: {},
@@ -43,17 +47,17 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
   });
 
   const loadTables = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) return;
     setState(s => ({ ...s, loading: true, error: null }));
     try {
-      const resp = await fetch(`${WEBHOOK_BASE}/amino-tables`);
-      if (!resp.ok) throw new Error(`Failed to fetch tables: ${resp.status}`);
-      const data = await resp.json();
-      const tables: TableInfo[] = (Array.isArray(data) ? data : data.tables || []).map((t: any) => ({
+      const rawTables = await apiFetchTables(token);
+      const tables: TableInfo[] = (Array.isArray(rawTables) ? rawTables : []).map((t: any) => ({
         tableId: t.table_id || t.tableId,
         tableName: t.table_name || t.tableName || t.table_id || '',
         matrixRoomId: t.matrix_room_id || t.matrixRoomId,
         primaryField: t.primary_field || t.primaryField,
-        fieldCount: t.field_count || t.fieldCount,
+        fieldCount: t.field_count || t.fieldCount || t.record_count || t.recordCount,
       }));
       setState(s => ({ ...s, tables, loading: false }));
     } catch (err: any) {
@@ -62,11 +66,12 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadFieldsForTable = useCallback(async (tableId: string) => {
+    const token = tokenRef.current;
+    if (!token) return;
     try {
-      const resp = await fetch(`${WEBHOOK_BASE}/amino-fields?tableId=${encodeURIComponent(tableId)}`);
-      if (!resp.ok) throw new Error(`Failed to fetch fields: ${resp.status}`);
-      const data = await resp.json();
-      const fields: FieldDef[] = (Array.isArray(data) ? data : data.fields || []).map((f: any) => ({
+      const data = await apiFetchFields(tableId, token);
+      const rawFields = Array.isArray(data) ? data : data.fields || [];
+      const fields: FieldDef[] = rawFields.map((f: any) => ({
         fieldId: f.field_id || f.fieldId,
         tableId: f.table_id || f.tableId || tableId,
         fieldName: f.field_name || f.fieldName || '',
