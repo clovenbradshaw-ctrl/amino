@@ -21,6 +21,7 @@ interface SchemaState {
 interface SchemaContextValue extends SchemaState {
   loadTables: () => Promise<void>;
   loadFieldsForTable: (tableId: string) => Promise<void>;
+  deriveFieldsFromRecords: (tableId: string, records: Array<{ fields: Record<string, any> }>) => void;
   getTable: (tableId: string) => TableInfo | undefined;
   getFields: (tableId: string) => FieldDef[];
   getField: (tableId: string, fieldId: string) => FieldDef | undefined;
@@ -33,6 +34,25 @@ interface SchemaContextValue extends SchemaState {
 }
 
 const SchemaContext = createContext<SchemaContextValue | null>(null);
+
+/** Infer a FieldType from a sample value. */
+function inferFieldType(value: any): FieldType {
+  if (value == null) return 'singleLineText';
+  if (typeof value === 'boolean') return 'checkbox';
+  if (typeof value === 'number') return 'number';
+  if (Array.isArray(value)) {
+    if (value.length > 0 && typeof value[0] === 'string') return 'multipleSelects';
+    return 'multipleRecordLinks';
+  }
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return 'dateTime';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'date';
+    if (/^https?:\/\//.test(value)) return 'url';
+    if (/@/.test(value) && /\./.test(value)) return 'email';
+    if (value.includes('\n')) return 'multilineText';
+  }
+  return 'singleLineText';
+}
 
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
@@ -137,6 +157,43 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const deriveFieldsFromRecords = useCallback((tableId: string, records: Array<{ fields: Record<string, any> }>) => {
+    // Only derive if we don't already have fields for this table
+    if (state.fieldsByTable[tableId]?.length > 0) return;
+
+    const fieldNames = new Set<string>();
+    const sampleValues = new Map<string, any>();
+
+    for (const record of records.slice(0, 100)) {
+      let fields = record.fields;
+      if (typeof fields === 'string') {
+        try { fields = JSON.parse(fields); } catch { continue; }
+      }
+      if (!fields || typeof fields !== 'object') continue;
+      for (const [key, value] of Object.entries(fields)) {
+        fieldNames.add(key);
+        if (!sampleValues.has(key) && value != null) sampleValues.set(key, value);
+      }
+    }
+
+    const fields: FieldDef[] = Array.from(fieldNames).map((name, i) => ({
+      fieldId: `fld_${tableId.slice(0, 8)}_${i}`,
+      tableId,
+      fieldName: name,
+      fieldType: inferFieldType(sampleValues.get(name)),
+      isComputed: false,
+      isExcluded: false,
+      options: {},
+    }));
+
+    if (fields.length > 0) {
+      setState(s => ({
+        ...s,
+        fieldsByTable: { ...s.fieldsByTable, [tableId]: fields },
+      }));
+    }
+  }, [state.fieldsByTable]);
+
   const removeField = useCallback((tableId: string, fieldId: string) => {
     setState(s => ({
       ...s,
@@ -152,6 +209,7 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
       ...state,
       loadTables,
       loadFieldsForTable,
+      deriveFieldsFromRecords,
       getTable,
       getFields,
       getField,
