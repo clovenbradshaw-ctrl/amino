@@ -25,6 +25,7 @@ import type {
   TablesResponse,
 } from './types';
 
+/** n8n production webhook base — must be absolute URL (not relative) for GitHub Pages. */
 const WEBHOOK_BASE = 'https://n8n.intelechia.com/webhook';
 const MAX_RETRIES = 2;
 
