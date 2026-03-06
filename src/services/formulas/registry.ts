@@ -28,9 +28,10 @@ import type {
   ResultType,
 } from './types';
 
-// Field types that are computed (not directly editable)
+// Field types that are computed (not directly editable).
+// Includes both Airtable API names and internal aliases for compatibility.
 const COMPUTED_FIELD_TYPES = new Set([
-  'formula', 'rollup', 'lookup', 'count',
+  'formula', 'rollup', 'lookup', 'multipleLookupValues', 'count',
   'autoNumber', 'createdTime', 'lastModifiedTime',
   'createdBy', 'lastModifiedBy'
 ]);
@@ -138,7 +139,7 @@ export class FormulaRegistry {
         resultType: (options.result || { type: 'string' }) as ResultType
       });
 
-    } else if (entry.fieldType === 'lookup') {
+    } else if (entry.fieldType === 'lookup' || entry.fieldType === 'multipleLookupValues') {
       const linkedTableId = this._resolveLinkedTable(options.recordLinkFieldId || '');
       const foreignFieldName = this._resolveFieldName(options.fieldIdInLinkedTable || '', linkedTableId);
       const linkFieldName = this._resolveFieldName(options.recordLinkFieldId || '', this.tableId);

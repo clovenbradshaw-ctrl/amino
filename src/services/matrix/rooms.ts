@@ -12,6 +12,21 @@ import type {
   PowerLevelsContent,
 } from './types';
 import { request, requestWithRetry } from './client';
+import { getCachedStateEvent } from './sync';
+
+/**
+ * Check if a room has encryption enabled (m.room.encryption state event).
+ * Uses the sync cache first, falls back to a server request.
+ */
+export async function isRoomEncrypted(roomId: string): Promise<boolean> {
+  // Check sync cache first (fast path)
+  const cached = getCachedStateEvent(roomId, 'm.room.encryption', '');
+  if (cached) return true;
+
+  // Fall back to server query
+  const content = await getStateEvent(roomId, 'm.room.encryption', '');
+  return content !== null;
+}
 
 // ============ Room Queries (Server) ============
 
@@ -94,6 +109,10 @@ export async function getStateEvent(
  * Send a timeline (non-state) event to a room.
  * Generates a unique transaction ID.
  *
+ * Checks if the room has encryption enabled — if so, throws a clear error
+ * since this client does not support Olm/Megolm E2EE. Data writes should
+ * be routed through n8n webhooks instead of Matrix rooms.
+ *
  * Ported from matrix.js `sendEvent()`.
  */
 export async function sendEvent(
@@ -101,6 +120,15 @@ export async function sendEvent(
   eventType: string,
   content: Record<string, unknown>,
 ): Promise<{ event_id: string }> {
+  // Guard: detect encrypted rooms before sending
+  const encrypted = await isRoomEncrypted(roomId);
+  if (encrypted) {
+    throw new Error(
+      `Cannot send event to encrypted room ${roomId}: this client does not support E2EE. ` +
+      `Route data writes through the n8n webhook API instead of Matrix rooms.`
+    );
+  }
+
   const txnId =
     'm' + Date.now() + '.' + Math.random().toString(36).substring(2, 10);
   const path =
