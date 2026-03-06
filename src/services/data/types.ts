@@ -245,6 +245,17 @@ export interface RecordsResponse {
     lastSynced?: string;
     last_synced?: string;
   }>;
+  /** Alternate key some endpoints use instead of `records`. */
+  items?: Array<{
+    id: string;
+    tableId?: string;
+    table_id?: string;
+    tableName?: string;
+    table_name?: string;
+    fields: Record<string, any> | string;
+    lastSynced?: string;
+    last_synced?: string;
+  }>;
   /** Server-provided cursor for incremental sync. */
   next_since?: string;
   /** Server clock at response time. */
