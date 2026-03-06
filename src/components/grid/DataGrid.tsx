@@ -131,17 +131,25 @@ export function DataGrid({ tableId }: DataGridProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const allFields = schema.getFields(tableId);
+  const fieldError = schema.getFieldError(tableId);
+  const loading = data.isLoading(tableId);
+
+  // Bridge DataContext records (recordId) to AminoRecord (id) format
+  const dataRecords = data.getRecords(tableId);
+
   // Load fields & records
   useEffect(() => {
     schema.loadFieldsForTable(tableId);
     data.loadRecords(tableId);
   }, [tableId, schema.loadFieldsForTable, data.loadRecords]);
 
-  const allFields = schema.getFields(tableId);
-  const loading = data.isLoading(tableId);
-
-  // Bridge DataContext records (recordId) to AminoRecord (id) format
-  const dataRecords = data.getRecords(tableId);
+  // Fallback: infer fields from records when /amino-fields fails
+  useEffect(() => {
+    if (fieldError && allFields.length === 0 && dataRecords.length > 0) {
+      schema.inferFieldsFromRecords(tableId, dataRecords);
+    }
+  }, [fieldError, allFields.length, dataRecords, tableId, schema.inferFieldsFromRecords]);
   const records = useMemo(() => {
     if (dataRecords.length > 0) {
       return dataRecords.map(r => ({
@@ -451,6 +459,21 @@ export function DataGrid({ tableId }: DataGridProps) {
     return (
       <div className="grid-container">
         <Spinner message="Loading records..." large />
+      </div>
+    );
+  }
+
+  // Field loading error state — only show if we can't infer fields from records either
+  if (fieldError && allFields.length === 0 && !loading && dataRecords.length === 0) {
+    return (
+      <div className="grid-container">
+        <EmptyState
+          icon="&#x26A0;"
+          title="Failed to load fields"
+          description={fieldError}
+          actionLabel="Retry"
+          onAction={() => schema.loadFieldsForTable(tableId)}
+        />
       </div>
     );
   }
