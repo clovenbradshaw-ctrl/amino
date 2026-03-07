@@ -124,9 +124,9 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         tableId: f.table_id || f.tableId || tableId,
         fieldName: f.field_name || f.fieldName || '',
         fieldType: (f.field_type || f.fieldType || 'singleLineText') as FieldType,
-        isComputed: f.is_computed ?? f.isComputed ?? false,
+        isComputed: (f.is_computed ?? f.isComputed ?? false) || isComputed((f.field_type || f.fieldType || 'singleLineText') as FieldType),
         isExcluded: f.is_excluded ?? f.isExcluded ?? false,
-        options: f.options || {},
+        options: typeof f.options === 'string' ? (() => { try { return JSON.parse(f.options); } catch { return {}; } })() : (f.options || {}),
       }));
       setState(s => ({
         ...s,
