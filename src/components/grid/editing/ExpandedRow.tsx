@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { FieldDef } from '@/utils/field-types';
-import { getFieldIcon, formatCellValue, isEditable } from '@/utils/field-types';
+import { getFieldIcon, formatCellValue, isEditable, COMPUTED_TYPES } from '@/utils/field-types';
 import type { AminoRecord } from '@/services/data/types';
 import { Modal } from '@/components/shared/Modal';
 
@@ -65,6 +65,9 @@ export function ExpandedRow({
           const value = editing ? draft[field.fieldName] : record.fields[field.fieldName];
           const canEdit = editing && isEditable(field.fieldType);
 
+          const isFormulaType = COMPUTED_TYPES.includes(field.fieldType);
+          const formulaStr = field.options?.formula || null;
+
           return (
             <div key={field.fieldId} className="grid-expanded-field">
               <div className="grid-expanded-field-label">
@@ -83,6 +86,22 @@ export function ExpandedRow({
               ) : (
                 <div className="grid-expanded-field-value">
                   {formatCellValue(value, field.fieldType) || '\u2014'}
+                </div>
+              )}
+              {isFormulaType && formulaStr && (
+                <div style={{
+                  marginTop: 4,
+                  padding: '6px 10px',
+                  background: '#1a1a2e',
+                  color: '#a5f3fc',
+                  borderRadius: 4,
+                  fontFamily: 'var(--font-mono, monospace)',
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}>
+                  {formulaStr}
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { FieldDef } from '@/utils/field-types';
-import { TEXT_TYPES, NUMERIC_TYPES, DATE_TYPES, formatCellValue } from '@/utils/field-types';
+import { TEXT_TYPES, NUMERIC_TYPES, DATE_TYPES, COMPUTED_TYPES, formatCellValue } from '@/utils/field-types';
 import { classNames } from '@/utils/format';
 import { TextCell } from './cells/TextCell';
 import { NumberCell } from './cells/NumberCell';
@@ -8,6 +8,7 @@ import { DateCell } from './cells/DateCell';
 import { CheckboxCell } from './cells/CheckboxCell';
 import { SelectCell } from './cells/SelectCell';
 import { LinkCell } from './cells/LinkCell';
+import { FormulaCell } from './cells/FormulaCell';
 
 interface GridCellProps {
   value: any;
@@ -29,6 +30,11 @@ export function GridCell({ value, field, isEditing, onChange, width }: GridCellP
 
   const renderContent = () => {
     const { fieldType } = field;
+
+    // Computed / formula fields — clickable to reveal formula definition
+    if (COMPUTED_TYPES.includes(fieldType)) {
+      return <FormulaCell value={value} field={field} />;
+    }
 
     if (TEXT_TYPES.includes(fieldType)) {
       return <TextCell value={value} field={field} isEditing={isEditing} onChange={onChange} />;

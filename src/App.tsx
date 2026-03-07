@@ -12,6 +12,7 @@ import AppShell from './components/layout/AppShell';
 // Lazy-load heavy pages
 const DataGrid = lazy(() => import('./components/grid/DataGrid'));
 const InterfacePage = lazy(() => import('./components/interface/InterfacePage'));
+const InterfaceNav = lazy(() => import('./components/interface/InterfaceNav'));
 const InterfaceBuilder = lazy(() => import('./components/interface/builder/InterfaceBuilder'));
 const ProfileLayoutBuilder = lazy(() => import('./components/profile/ProfileLayoutBuilder'));
 const SchemaDesigner = lazy(() => import('./components/schema/SchemaDesigner'));
@@ -23,11 +24,20 @@ function DataGridRoute() {
   return <DataGrid tableId={tableId} />;
 }
 
-/** Route wrapper for interface — renders first available page or empty state */
+/** Route wrapper for interface — renders all pre-built pages with nav */
 function InterfaceRoute() {
   const { pages } = useInterface();
-  const firstPage = pages[0];
-  if (!firstPage) {
+  const [activePageId, setActivePageId] = React.useState<string | null>(pages[0]?.pageId || null);
+
+  React.useEffect(() => {
+    if (!activePageId && pages.length > 0) {
+      setActivePageId(pages[0].pageId);
+    }
+  }, [pages, activePageId]);
+
+  const activePage = pages.find(p => p.pageId === activePageId) || pages[0];
+
+  if (!activePage) {
     return (
       <div style={{ padding: 48, textAlign: 'center', color: '#999' }}>
         <h2 style={{ fontSize: 20, marginBottom: 8 }}>No Interface Pages</h2>
@@ -35,7 +45,17 @@ function InterfaceRoute() {
       </div>
     );
   }
-  return <InterfacePage pageSchema={firstPage} />;
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      <InterfaceNav
+        pages={pages}
+        activePageId={activePageId}
+        onSelectPage={setActivePageId}
+      />
+      <InterfacePage pageSchema={activePage} />
+    </div>
+  );
 }
 
 function LoadingFallback() {

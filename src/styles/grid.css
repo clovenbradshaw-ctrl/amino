@@ -1072,6 +1072,154 @@
   color: var(--color-text-primary);
 }
 
+/* --- Formula Cell & Popover --- */
+.formula-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  cursor: pointer;
+  position: relative;
+}
+
+.formula-cell__value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-cell-formula, #6d28d9);
+  font-style: italic;
+}
+
+.formula-cell__indicator {
+  flex-shrink: 0;
+  font-size: 10px;
+  opacity: 0.4;
+  transition: opacity var(--transition-fast);
+}
+
+.formula-cell:hover .formula-cell__indicator {
+  opacity: 1;
+}
+
+.formula-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  width: 340px;
+  background: var(--color-bg-primary, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-lg, 0 10px 15px rgba(0,0,0,0.1));
+  font-style: normal;
+}
+
+.formula-popover__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border-light, #eee);
+  background: var(--color-bg-header, #f8f8f8);
+  border-radius: var(--radius-md, 6px) var(--radius-md, 6px) 0 0;
+}
+
+.formula-popover__icon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.formula-popover__title {
+  font-weight: 600;
+  font-size: var(--text-sm, 12px);
+  color: var(--color-text-primary, #1a1a2e);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formula-popover__type {
+  font-size: 10px;
+  background: var(--color-accent-light, #dbeafe);
+  color: var(--color-accent, #2563eb);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.formula-popover__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted, #999);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.formula-popover__close:hover {
+  background: var(--color-bg-secondary, #f5f5f5);
+  color: var(--color-text-primary, #1a1a2e);
+}
+
+.formula-popover__body {
+  padding: 10px 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.formula-popover__section {
+  margin-bottom: 10px;
+}
+
+.formula-popover__section:last-child {
+  margin-bottom: 0;
+}
+
+.formula-popover__label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.formula-popover__code {
+  background: #1a1a2e;
+  color: #a5f3fc;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm, 4px);
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+.formula-popover__detail {
+  font-size: var(--text-sm, 12px);
+  color: var(--color-text-primary, #1a1a2e);
+  padding: 4px 8px;
+  background: var(--color-bg-secondary, #f5f5f5);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.formula-popover__detail--value {
+  font-weight: 500;
+  color: var(--color-cell-formula, #6d28d9);
+}
+
 /* --- Hidden Fields Popover --- */
 .grid-hidden-fields-list {
   max-height: 300px;
