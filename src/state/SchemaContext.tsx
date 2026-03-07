@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import type { FieldDef, FieldType } from '../utils/field-types';
+import { isComputed } from '../utils/field-types';
 import { useAuth } from './AuthContext';
 import { fetchTables as apiFetchTables, fetchFields as apiFetchFields } from '../services/data/api';
 
@@ -21,6 +22,7 @@ interface SchemaState {
 interface SchemaContextValue extends SchemaState {
   loadTables: () => Promise<void>;
   loadFieldsForTable: (tableId: string) => Promise<void>;
+  deriveFieldsFromRecords: (tableId: string, records: Array<{ fields: Record<string, any> }>) => void;
   getTable: (tableId: string) => TableInfo | undefined;
   getFields: (tableId: string) => FieldDef[];
   getField: (tableId: string, fieldId: string) => FieldDef | undefined;
@@ -33,6 +35,52 @@ interface SchemaContextValue extends SchemaState {
 }
 
 const SchemaContext = createContext<SchemaContextValue | null>(null);
+
+/**
+ * Infer a FieldType from a sample value.
+ *
+ * Heuristics are tuned against real Airtable event-stream data where:
+ *   - Record link arrays contain "rec…" IDs (not free-text select options)
+ *   - Button/action fields are objects with a "label" key
+ *   - Rollup/lookup results may be arrays of non-string primitives
+ *   - Computed fields may produce {"specialValue":"NaN"} sentinel objects
+ */
+function inferFieldType(value: any): FieldType {
+  if (value == null) return 'singleLineText';
+  if (typeof value === 'boolean') return 'checkbox';
+  if (typeof value === 'number') return 'number';
+
+  // Arrays — distinguish record links from selects and lookup values
+  if (Array.isArray(value)) {
+    if (value.length === 0) return 'multipleSelects';
+    const first = value[0];
+    // Array of objects (record links, rollup results, or specialValue sentinels)
+    if (typeof first === 'object' && first !== null) return 'multipleRecordLinks';
+    // Array of strings — check for Airtable record ID pattern (rec + 14-17 alphanum chars)
+    if (typeof first === 'string') {
+      if (/^rec[A-Za-z0-9]{10,}$/.test(first)) return 'multipleRecordLinks';
+      return 'multipleSelects';
+    }
+    // Array of booleans/numbers = lookup values
+    return 'multipleLookupValues';
+  }
+
+  // Objects — button fields have {label: "..."}, computed results may have {specialValue: ...}
+  if (typeof value === 'object' && value !== null) {
+    if ('label' in value) return 'button';
+    if ('specialValue' in value) return 'formula';
+    return 'singleLineText';
+  }
+
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return 'dateTime';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'date';
+    if (/^https?:\/\//.test(value)) return 'url';
+    if (/@/.test(value) && /\./.test(value)) return 'email';
+    if (value.includes('\n')) return 'multilineText';
+  }
+  return 'singleLineText';
+}
 
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
@@ -137,6 +185,46 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const deriveFieldsFromRecords = useCallback((tableId: string, records: Array<{ fields: Record<string, any> }>) => {
+    // Only derive if we don't already have fields for this table
+    if (state.fieldsByTable[tableId]?.length > 0) return;
+
+    const fieldNames = new Set<string>();
+    const sampleValues = new Map<string, any>();
+
+    for (const record of records.slice(0, 100)) {
+      let fields = record.fields;
+      if (typeof fields === 'string') {
+        try { fields = JSON.parse(fields); } catch { continue; }
+      }
+      if (!fields || typeof fields !== 'object') continue;
+      for (const [key, value] of Object.entries(fields)) {
+        fieldNames.add(key);
+        if (!sampleValues.has(key) && value != null) sampleValues.set(key, value);
+      }
+    }
+
+    const fields: FieldDef[] = Array.from(fieldNames).map((name, i) => {
+      const fieldType = inferFieldType(sampleValues.get(name));
+      return {
+        fieldId: `fld_${tableId.slice(0, 8)}_${i}`,
+        tableId,
+        fieldName: name,
+        fieldType,
+        isComputed: isComputed(fieldType),
+        isExcluded: false,
+        options: {},
+      };
+    });
+
+    if (fields.length > 0) {
+      setState(s => ({
+        ...s,
+        fieldsByTable: { ...s.fieldsByTable, [tableId]: fields },
+      }));
+    }
+  }, [state.fieldsByTable]);
+
   const removeField = useCallback((tableId: string, fieldId: string) => {
     setState(s => ({
       ...s,
@@ -152,6 +240,7 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
       ...state,
       loadTables,
       loadFieldsForTable,
+      deriveFieldsFromRecords,
       getTable,
       getFields,
       getField,

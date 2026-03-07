@@ -16,6 +16,7 @@
 // =============================================================================
 
 import type {
+  AminoEvent,
   AminoTable,
   EventsRecordResponse,
   EventsSetResponse,
@@ -270,6 +271,19 @@ export async function fetchRecord(
 // =============================================================================
 
 /**
+ * Parse event payload if it arrived as a JSON string (double-encoded by n8n's
+ * JSON.stringify when the PostgreSQL column is text rather than JSONB).
+ */
+function normalizeEventPayloads(events: AminoEvent[]): AminoEvent[] {
+  return events.map(e => {
+    if (typeof e.payload === 'string') {
+      try { return { ...e, payload: JSON.parse(e.payload) }; } catch { /* keep as-is */ }
+    }
+    return e;
+  });
+}
+
+/**
  * Fetch events for a given set from /amino-events-set.
  *
  * @param set         - Event set name
@@ -284,7 +298,12 @@ export async function fetchEventsBySet(
 ): Promise<EventsSetResponse> {
   let path = '/amino-events-set?set=' + encodeURIComponent(set);
   if (limit) path += '&limit=' + limit;
-  return apiFetch(path, accessToken, 'eventQuery');
+  const data = await apiFetch(path, accessToken, 'eventQuery');
+  return {
+    set: data.set || set,
+    count: data.count ?? (data.events || []).length,
+    events: normalizeEventPayloads(data.events || []),
+  };
 }
 
 /**
@@ -305,7 +324,12 @@ export async function fetchEventsSince(
   let path = '/amino-events-since?since=' + encodeURIComponent(since);
   if (set) path += '&set=' + encodeURIComponent(set);
   if (limit) path += '&limit=' + limit;
-  return apiFetch(path, accessToken, 'eventQuery');
+  const data = await apiFetch(path, accessToken, 'eventQuery');
+  return {
+    since: data.since || since,
+    count: data.count ?? (data.events || []).length,
+    events: normalizeEventPayloads(data.events || []),
+  };
 }
 
 /**
@@ -319,9 +343,14 @@ export async function fetchEventsByRecord(
   recordId: string,
   accessToken: string,
 ): Promise<EventsRecordResponse> {
-  return apiFetch(
+  const data = await apiFetch(
     '/amino-events-record?recordId=' + encodeURIComponent(recordId),
     accessToken,
     'eventQuery',
   );
+  return {
+    recordId: data.recordId || recordId,
+    count: data.count ?? (data.events || []).length,
+    events: normalizeEventPayloads(data.events || []),
+  };
 }

@@ -140,6 +140,14 @@ export function DataGrid({ tableId }: DataGridProps) {
   const allFields = schema.getFields(tableId);
   const loading = data.isLoading(tableId);
 
+  // Derive field definitions from records when the /amino-fields endpoint is unavailable
+  const dataRecordsForDerive = data.getRecords(tableId);
+  useEffect(() => {
+    if (allFields.length === 0 && dataRecordsForDerive.length > 0 && !loading) {
+      schema.deriveFieldsFromRecords(tableId, dataRecordsForDerive);
+    }
+  }, [allFields.length, dataRecordsForDerive, loading, tableId, schema.deriveFieldsFromRecords]);
+
   // Bridge DataContext records (recordId) to AminoRecord (id) format
   const dataRecords = data.getRecords(tableId);
   const records = useMemo(() => {

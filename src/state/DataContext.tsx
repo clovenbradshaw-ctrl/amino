@@ -73,12 +73,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         rawRecords = data.items;
       }
 
-      const records: AminoRecord[] = rawRecords.map((r: any) => ({
-        tableId,
-        recordId: r.record_id || r.recordId || r.id || '',
-        fields: r.fields || r,
-        _fieldMetadata: r._fieldMetadata,
-      }));
+      const records: AminoRecord[] = rawRecords.map((r: any) => {
+        let fields = r.fields || r;
+        // Parse JSON string fields (PostgreSQL JSON columns may arrive as strings)
+        if (typeof fields === 'string') {
+          try { fields = JSON.parse(fields); } catch { fields = {}; }
+        }
+        return {
+          tableId,
+          recordId: r.record_id || r.recordId || r.id || '',
+          fields,
+          _fieldMetadata: r._fieldMetadata,
+        };
+      });
 
       setState(s => ({
         ...s,
