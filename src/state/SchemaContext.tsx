@@ -125,7 +125,7 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         fieldName: f.field_name || f.fieldName || '',
         fieldType: (f.field_type || f.fieldType || 'singleLineText') as FieldType,
         isComputed: f.is_computed ?? f.isComputed ?? false,
-        isExcluded: f.is_excluded ?? f.isExcluded ?? false,
+        isExcluded: false,  // show all fields by default
         options: f.options || {},
       }));
       setState(s => ({
@@ -192,7 +192,8 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     const fieldNames = new Set<string>();
     const sampleValues = new Map<string, any>();
 
-    for (const record of records.slice(0, 100)) {
+    // Scan ALL records so no fields are missed
+    for (const record of records) {
       let fields = record.fields;
       if (typeof fields === 'string') {
         try { fields = JSON.parse(fields); } catch { continue; }

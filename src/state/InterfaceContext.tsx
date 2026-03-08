@@ -58,12 +58,212 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
+/** Pre-built interface pages seeded on first load when no saved config exists. */
+function getDefaultPages(): InterfacePageSchema[] {
+  return [
+    {
+      pageId: 'page-dashboard',
+      pageName: 'Dashboard',
+      icon: '\u{1F4CA}',
+      pageType: 'dashboard',
+      blocks: [
+        {
+          blockId: 'blk-dash-summary',
+          blockType: 'summary',
+          title: 'Case Overview',
+          config: {
+            metrics: [
+              { label: 'Total Cases', fieldName: 'id', aggregation: 'count' },
+              { label: 'Active Applications', fieldName: 'id', aggregation: 'count' },
+              { label: 'Pending Deadlines', fieldName: 'id', aggregation: 'count' },
+              { label: 'Consultations', fieldName: 'id', aggregation: 'count' },
+            ],
+            records: [],
+          },
+        },
+        {
+          blockId: 'blk-dash-text',
+          blockType: 'text',
+          title: 'Quick Links',
+          config: {
+            html: '<p><strong>Welcome to Amino.</strong> Use the sidebar to navigate between tables, or use the pages below for pre-built views of your data.</p><ul><li><strong>Client Info</strong> &mdash; View and manage all client records</li><li><strong>Case Master View</strong> &mdash; Full case overview with statuses</li><li><strong>Applications</strong> &mdash; Track application filings and deadlines</li><li><strong>Deadlines</strong> &mdash; Upcoming deadline tracker</li></ul>',
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-clients',
+      pageName: 'Client Info',
+      icon: '\u{1F464}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-clients-table',
+          blockType: 'data-table',
+          title: 'All Clients',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 50,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-cases',
+      pageName: 'Case Master View',
+      icon: '\u{1F4C1}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-cases-summary',
+          blockType: 'summary',
+          title: 'Case Statistics',
+          config: {
+            metrics: [
+              { label: 'Total Cases', fieldName: 'id', aggregation: 'count' },
+            ],
+            records: [],
+          },
+        },
+        {
+          blockId: 'blk-cases-table',
+          blockType: 'data-table',
+          title: 'All Cases',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 50,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-applications',
+      pageName: 'Applications',
+      icon: '\u{1F4DD}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-apps-table',
+          blockType: 'data-table',
+          title: 'All Applications',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 50,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-deadlines',
+      pageName: 'Deadlines',
+      icon: '\u{23F0}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-deadlines-table',
+          blockType: 'data-table',
+          title: 'Upcoming Deadlines',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 25,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-consultations',
+      pageName: 'Consultations',
+      icon: '\u{1F4DE}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-consult-table',
+          blockType: 'data-table',
+          title: 'Consultation Call Backs',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 25,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-collections',
+      pageName: 'Collections',
+      icon: '\u{1F4B0}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-collections-table',
+          blockType: 'data-table',
+          title: 'Collections',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 50,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-attorney',
+      pageName: 'Attorney Info',
+      icon: '\u{2696}',
+      pageType: 'detail',
+      blocks: [
+        {
+          blockId: 'blk-attorney-table',
+          blockType: 'data-table',
+          title: 'Attorney Information',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 25,
+          },
+        },
+      ],
+    },
+    {
+      pageId: 'page-dev-requests',
+      pageName: 'Dev Requests',
+      icon: '\u{1F6E0}',
+      pageType: 'list',
+      blocks: [
+        {
+          blockId: 'blk-dev-table',
+          blockType: 'data-table',
+          title: 'Development Requests',
+          config: {
+            tableId: '',
+            columns: [],
+            records: [],
+            pageSize: 25,
+          },
+        },
+      ],
+    },
+  ];
+}
+
 /* ------------------------------------------------------------------ */
 /*  Provider                                                           */
 /* ------------------------------------------------------------------ */
 
 export function InterfaceProvider({ children }: { children: React.ReactNode }) {
-  const [pages, setPages] = useState<InterfacePageSchema[]>([]);
+  // Seed with pre-built pages so users see content on first load
+  const [pages, setPages] = useState<InterfacePageSchema[]>(getDefaultPages);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,8 +350,8 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
       );
 
       if (resp.status === 404) {
-        // No config saved yet
-        setPages([]);
+        // No config saved yet — use pre-built defaults
+        setPages(getDefaultPages());
         setLoading(false);
         return;
       }
@@ -159,7 +359,7 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
 
       const data = await resp.json();
       const loaded: InterfacePageSchema[] = Array.isArray(data.pages) ? data.pages : [];
-      setPages(loaded);
+      setPages(loaded.length > 0 ? loaded : getDefaultPages());
     } catch (err: any) {
       setError(err.message);
     } finally {

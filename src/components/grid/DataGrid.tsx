@@ -173,10 +173,11 @@ export function DataGrid({ tableId }: DataGridProps) {
     }
   }, [tableId, currentView, setCurrentView]);
 
-  // Visible fields (excluding hidden)
+  // Visible fields — show ALL fields by default (including computed/formula);
+  // only respect explicit user hide-actions from the current view.
   const visibleFields = useMemo(() => {
-    if (!currentView) return allFields.filter(f => !f.isExcluded);
-    let fields = allFields.filter(f => !f.isExcluded && !currentView.hiddenFieldIds.includes(f.fieldId));
+    if (!currentView) return allFields;
+    let fields = allFields.filter(f => !currentView.hiddenFieldIds.includes(f.fieldId));
     if (currentView.fieldOrder.length > 0) {
       const orderMap = new Map(currentView.fieldOrder.map((id, i) => [id, i]));
       fields.sort((a, b) => (orderMap.get(a.fieldId) ?? 999) - (orderMap.get(b.fieldId) ?? 999));
