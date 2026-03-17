@@ -51,6 +51,10 @@ export default function Sidebar() {
                 <span className="sidebar-link-icon">⊞</span>
                 <span>Schema</span>
               </NavLink>
+              <NavLink to="/history" className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}>
+                <span className="sidebar-link-icon">⊙</span>
+                <span>EO History</span>
+              </NavLink>
             </div>
 
             <div className="sidebar-section">

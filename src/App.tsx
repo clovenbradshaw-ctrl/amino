@@ -16,6 +16,7 @@ const InterfaceNav = lazy(() => import('./components/interface/InterfaceNav'));
 const InterfaceBuilder = lazy(() => import('./components/interface/builder/InterfaceBuilder'));
 const ProfileLayoutBuilder = lazy(() => import('./components/profile/ProfileLayoutBuilder'));
 const SchemaDesigner = lazy(() => import('./components/schema/SchemaDesigner'));
+const EoNotationHistory = lazy(() => import('./components/history/EoNotationHistory'));
 
 /** Route wrapper that extracts tableId param and passes it as prop */
 function DataGridRoute() {
@@ -107,6 +108,7 @@ function AuthGate() {
                   <Route path="/builder/interface" element={<InterfaceBuilder />} />
                   <Route path="/builder/profile" element={<ProfileLayoutBuilder />} />
                   <Route path="/schema" element={<SchemaDesigner />} />
+                  <Route path="/history" element={<EoNotationHistory />} />
                   <Route path="/" element={<Navigate to="/interface" replace />} />
                   <Route path="*" element={<Navigate to="/interface" replace />} />
                 </Route>
