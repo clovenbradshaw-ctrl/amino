@@ -19,7 +19,7 @@ function formatTimeAgo(iso: string): string {
 export default function Sidebar() {
   const { tables, loading, loadTables } = useSchema();
   const { session, logout } = useAuth();
-  const { getLatestSyncTime } = useData();
+  const { getLatestSyncTime, getRecords, recordsByTable } = useData();
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
   const [, setTick] = useState(0);
@@ -101,9 +101,13 @@ export default function Sidebar() {
                   >
                     <span className="sidebar-link-icon">⊟</span>
                     <span className="sidebar-link-text">{t.tableName || t.tableId}</span>
-                    {(t.recordCount != null || t.fieldCount != null) && (
-                      <span className="sidebar-link-badge">{t.recordCount ?? t.fieldCount}</span>
-                    )}
+                    {(() => {
+                      const loadedRecords = recordsByTable[t.tableId];
+                      const count = loadedRecords ? loadedRecords.length : (t.recordCount ?? t.fieldCount);
+                      return count != null ? (
+                        <span className="sidebar-link-badge">{count}</span>
+                      ) : null;
+                    })()}
                   </NavLink>
                 ))}
                 {filteredTables.length === 0 && !loading && (
