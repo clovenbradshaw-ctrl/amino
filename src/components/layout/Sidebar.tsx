@@ -74,7 +74,7 @@ export default function Sidebar() {
               </NavLink>
               <NavLink to="/history" className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link--active' : ''}`}>
                 <span className="sidebar-link-icon">⊙</span>
-                <span>EO History</span>
+                <span>Emitted Operations</span>
               </NavLink>
             </div>
 

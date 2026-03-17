@@ -155,6 +155,10 @@ export async function apiFetch(
       console.log(
         `[API] Empty response for ${path} -- treating as empty result set`,
       );
+      // Return shape matching the endpoint: events for event queries, records otherwise
+      if (intent === 'eventQuery') {
+        return { events: [] };
+      }
       return { records: [] };
     }
     return JSON.parse(text);
@@ -271,16 +275,35 @@ export async function fetchRecord(
 // =============================================================================
 
 /**
- * Parse event payload if it arrived as a JSON string (double-encoded by n8n's
- * JSON.stringify when the PostgreSQL column is text rather than JSONB).
+ * Normalize a single event from the API response.
+ *
+ * Handles two issues:
+ *   1. Snake_case keys from PostgreSQL (record_id, created_at) → camelCase
+ *   2. Double-encoded JSON payloads from n8n when the column is TEXT not JSONB
  */
-function normalizeEventPayloads(events: AminoEvent[]): AminoEvent[] {
-  return events.map(e => {
-    if (typeof e.payload === 'string') {
-      try { return { ...e, payload: JSON.parse(e.payload) }; } catch { /* keep as-is */ }
-    }
-    return e;
-  });
+function normalizeEvent(raw: any): AminoEvent {
+  const event: AminoEvent = {
+    id: raw.id,
+    recordId: raw.recordId ?? raw.record_id ?? '',
+    createdAt: raw.createdAt ?? raw.created_at ?? '',
+    operator: raw.operator ?? raw.op ?? '',
+    payload: raw.payload,
+    uuid: raw.uuid ?? '',
+    set: raw.set ?? raw.set_name ?? '',
+  };
+  // Parse double-encoded JSON payloads
+  if (typeof event.payload === 'string') {
+    try { event.payload = JSON.parse(event.payload); } catch { /* keep as-is */ }
+  }
+  return event;
+}
+
+/**
+ * Normalize an array of events from the API, handling snake_case keys and
+ * double-encoded payloads.
+ */
+function normalizeEventPayloads(events: any[]): AminoEvent[] {
+  return (events || []).map(normalizeEvent);
 }
 
 /**
@@ -299,11 +322,28 @@ export async function fetchEventsBySet(
   let path = '/amino-events-set?set=' + encodeURIComponent(set);
   if (limit) path += '&limit=' + limit;
   const data = await apiFetch(path, accessToken, 'eventQuery');
+  // n8n may return events as: { events: [...] }, raw array, or { rows: [...] }
+  const rawEvents = extractEventArray(data);
   return {
     set: data.set || set,
-    count: data.count ?? (data.events || []).length,
-    events: normalizeEventPayloads(data.events || []),
+    count: data.count ?? rawEvents.length,
+    events: normalizeEventPayloads(rawEvents),
   };
+}
+
+/**
+ * Extract the events array from an API response, handling multiple shapes:
+ *   - { events: [...] }    (expected shape)
+ *   - [...]                (raw array from n8n PostgreSQL node)
+ *   - { rows: [...] }      (alternate PostgreSQL shape)
+ *   - { data: [...] }      (generic wrapper)
+ */
+function extractEventArray(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.events)) return data.events;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
 }
 
 /**
@@ -325,10 +365,11 @@ export async function fetchEventsSince(
   if (set) path += '&set=' + encodeURIComponent(set);
   if (limit) path += '&limit=' + limit;
   const data = await apiFetch(path, accessToken, 'eventQuery');
+  const rawEvents = extractEventArray(data);
   return {
     since: data.since || since,
-    count: data.count ?? (data.events || []).length,
-    events: normalizeEventPayloads(data.events || []),
+    count: data.count ?? rawEvents.length,
+    events: normalizeEventPayloads(rawEvents),
   };
 }
 
@@ -348,9 +389,10 @@ export async function fetchEventsByRecord(
     accessToken,
     'eventQuery',
   );
+  const rawEvents = extractEventArray(data);
   return {
-    recordId: data.recordId || recordId,
-    count: data.count ?? (data.events || []).length,
-    events: normalizeEventPayloads(data.events || []),
+    recordId: data.recordId || data.record_id || recordId,
+    count: data.count ?? rawEvents.length,
+    events: normalizeEventPayloads(rawEvents),
   };
 }
