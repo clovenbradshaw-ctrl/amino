@@ -134,7 +134,7 @@ export default function EoNotationHistory() {
   return (
     <div className="eo-history">
       <div className="eo-history-header">
-        <h2 className="eo-history-title">EO Notation History</h2>
+        <h2 className="eo-history-title">Emitted Operations</h2>
         <div className="eo-history-controls">
           <select
             className="eo-filter-select"
