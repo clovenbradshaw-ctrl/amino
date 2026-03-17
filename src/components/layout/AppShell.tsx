@@ -1,12 +1,15 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
 export default function AppShell() {
+  const location = useLocation();
+  const hideMainSidebar = location.pathname === '/interface';
+
   return (
     <div className="app-shell">
-      <Sidebar />
+      {!hideMainSidebar && <Sidebar />}
       <div className="app-main">
         <Header />
         <div className="app-content">
