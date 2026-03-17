@@ -20,6 +20,27 @@
   gap: var(--space-sm, 8px);
 }
 
+.interface-nav__back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-sidebar, #c8c8d4);
+  font-size: var(--text-lg, 14px);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast, 150ms ease), color var(--transition-fast, 150ms ease);
+}
+
+.interface-nav__back-btn:hover {
+  background: var(--color-bg-sidebar-hover, #2d2d3d);
+  color: var(--color-text-sidebar-active, #fff);
+}
+
 .interface-nav__header-dot {
   width: 8px;
   height: 8px;
