@@ -97,8 +97,8 @@ export default function Sidebar() {
                   >
                     <span className="sidebar-link-icon">⊟</span>
                     <span className="sidebar-link-text">{t.tableName || t.tableId}</span>
-                    {t.fieldCount != null && (
-                      <span className="sidebar-link-badge">{t.fieldCount}</span>
+                    {(t.recordCount != null || t.fieldCount != null) && (
+                      <span className="sidebar-link-badge">{t.recordCount ?? t.fieldCount}</span>
                     )}
                   </NavLink>
                 ))}
