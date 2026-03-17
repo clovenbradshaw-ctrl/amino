@@ -31,9 +31,12 @@ export function GridCell({ value, field, isEditing, onChange, width }: GridCellP
   const renderContent = () => {
     const { fieldType } = field;
 
-    // Computed / formula fields — clickable to reveal formula definition
+    // Formula fields — editable inline; other computed fields show read-only
+    if (fieldType === 'formula') {
+      return <FormulaCell value={value} field={field} isEditing={isEditing} onChange={onChange} />;
+    }
     if (COMPUTED_TYPES.includes(fieldType)) {
-      return <FormulaCell value={value} field={field} />;
+      return <FormulaCell value={value} field={field} isEditing={false} onChange={onChange} />;
     }
 
     if (TEXT_TYPES.includes(fieldType)) {

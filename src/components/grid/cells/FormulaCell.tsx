@@ -5,16 +5,21 @@ import { formatCellValue, getFieldIcon } from '@/utils/field-types';
 interface FormulaCellProps {
   value: any;
   field: FieldDef;
+  isEditing?: boolean;
+  onChange?: (value: any) => void;
 }
 
 /**
  * Cell renderer for formula / rollup / lookup fields.
- * Displays the computed value; clicking opens a popover showing the formula definition.
+ * - For formula fields: click to edit the formula expression inline.
+ * - For other computed types: displays the computed value; clicking opens a
+ *   popover showing the formula definition.
  */
-export function FormulaCell({ value, field }: FormulaCellProps) {
+export function FormulaCell({ value, field, isEditing = false, onChange }: FormulaCellProps) {
   const [showPopover, setShowPopover] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Close popover on outside click
   useEffect(() => {
@@ -33,17 +38,54 @@ export function FormulaCell({ value, field }: FormulaCellProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [showPopover]);
 
-  const formulaStr = field.options?.formula || null;
+  // Auto-focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const formulaStr = field.options?.formula || '';
   const linkedTableId = field.options?.linkedTableId || null;
   const fieldIdInLinked = field.options?.fieldIdInLinkedTable || null;
   const resultType = field.options?.result?.type || null;
 
   const displayValue = formatCellValue(value, field.fieldType);
 
+  // Editable formula field — show input for the formula expression
+  if (isEditing && field.fieldType === 'formula' && onChange) {
+    return (
+      <div className="formula-cell formula-cell--editing" ref={cellRef}>
+        <span className="formula-cell__edit-icon">ƒx</span>
+        <input
+          ref={inputRef}
+          className="formula-cell__input"
+          defaultValue={formulaStr}
+          placeholder="Enter formula..."
+          onBlur={e => onChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onChange((e.target as HTMLInputElement).value);
+            if (e.key === 'Escape') onChange(formulaStr); // revert
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div ref={cellRef} className="formula-cell" onClick={() => setShowPopover(prev => !prev)}>
+    <div
+      ref={cellRef}
+      className="formula-cell"
+      onClick={() => {
+        // Only show popover for non-formula computed types
+        if (field.fieldType !== 'formula') {
+          setShowPopover(prev => !prev);
+        }
+      }}
+    >
       <span className="formula-cell__value">{displayValue || '\u2014'}</span>
-      <span className="formula-cell__indicator" title="Click to see formula">
+      <span className="formula-cell__indicator" title={field.fieldType === 'formula' ? 'Click to edit formula' : 'Click to see formula'}>
         {getFieldIcon(field.fieldType)}
       </span>
 
