@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import type { BlockSchema } from '../../../state/InterfaceContext';
+import { useData } from '../../../state/DataContext';
+import { useSchema } from '../../../state/SchemaContext';
 import { formatCellValue } from '../../../utils/field-types';
 import type { FieldType } from '../../../utils/field-types';
 import '../../../styles/interface.css';
@@ -11,22 +13,59 @@ interface DetailBlockProps {
 /**
  * Block config shape:
  * {
+ *   tableId?: string;
+ *   recordId?: string;
  *   record: { recordId: string; fields: Record<string, any> } | null;
  *   sections: Array<{
  *     title: string;
  *     fields: Array<{ fieldName: string; fieldType: FieldType }>;
  *   }>;
- *   profileLayoutSchema?: object; // optional profile layout for advanced rendering
+ *   profileLayoutSchema?: object;
  * }
  */
 
 export default function DetailBlock({ block }: DetailBlockProps) {
   const config = block.config;
-  const record: { recordId: string; fields: Record<string, any> } | null = config.record || null;
+  const tableId: string = config.tableId || '';
+  const recordId: string = config.recordId || '';
+
+  const dataCtx = useData();
+  const schemaCtx = useSchema();
+
+  // Load live data when a tableId is configured
+  useEffect(() => {
+    if (tableId) {
+      dataCtx.loadRecords(tableId);
+      schemaCtx.loadFieldsForTable(tableId);
+    }
+  }, [tableId, dataCtx.loadRecords, schemaCtx.loadFieldsForTable]);
+
+  // Resolve the record: prefer live data from DataContext
+  const liveRecord = tableId && recordId ? dataCtx.getRecord(tableId, recordId) : undefined;
+  const record = useMemo(() => {
+    if (liveRecord) {
+      return { recordId: liveRecord.recordId, fields: liveRecord.fields };
+    }
+    return config.record || null;
+  }, [liveRecord, config.record]);
+
+  // Build sections from schema fields if available and no sections configured
+  const liveFields = schemaCtx.getFields(tableId);
   const sections: Array<{
     title: string;
     fields: Array<{ fieldName: string; fieldType: FieldType }>;
-  }> = config.sections || [];
+  }> = useMemo(() => {
+    if (config.sections && config.sections.length > 0) return config.sections;
+    if (tableId && liveFields.length > 0) {
+      return [{
+        title: '',
+        fields: liveFields
+          .filter(f => !f.isExcluded)
+          .map(f => ({ fieldName: f.fieldName, fieldType: f.fieldType })),
+      }];
+    }
+    return [];
+  }, [config.sections, tableId, liveFields]);
 
   if (!record) {
     return (
