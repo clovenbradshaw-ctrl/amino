@@ -164,14 +164,36 @@ export function DataGrid({ tableId }: DataGridProps) {
 
   // Bridge DataContext records (recordId) to AminoRecord (id) format,
   // applying formula computation to fill in computed column values.
+  // Also normalise field keys: API may return values keyed by fieldId
+  // instead of fieldName, so remap them so the grid can look up by name.
   const dataRecords = data.getRecords(tableId);
   const records = useMemo(() => {
     if (dataRecords.length > 0) {
+      // Build a fieldId→fieldName map for key normalisation
+      const idToName = new Map<string, string>();
+      for (const f of allFields) {
+        if (f.fieldId !== f.fieldName) {
+          idToName.set(f.fieldId, f.fieldName);
+        }
+      }
+
       return dataRecords.map(r => {
+        // Normalise: if a key matches a fieldId, copy its value under fieldName
+        let fields = r.fields;
+        if (idToName.size > 0) {
+          const normalised: Record<string, any> = { ...fields };
+          for (const [fid, fname] of idToName) {
+            if (fid in fields && !(fname in fields)) {
+              normalised[fname] = fields[fid];
+            }
+          }
+          fields = normalised;
+        }
+
         // Evaluate formula/rollup/lookup fields if the engine is ready
         const computedFields = computeRecord
-          ? computeRecord(r.fields, { recordId: r.recordId })
-          : r.fields;
+          ? computeRecord(fields, { recordId: r.recordId })
+          : fields;
         return {
           id: r.recordId,
           tableId: r.tableId,
@@ -362,16 +384,22 @@ export function DataGrid({ tableId }: DataGridProps) {
 
   const handleCellClick = useCallback((recordId: string, fieldId: string) => {
     setSelectedRecordId(recordId);
-  }, []);
+    // Single click enters edit mode for editable fields AND formula fields
+    const field = allFields.find(f => f.fieldId === fieldId);
+    if (field && (isEditable(field.fieldType) || field.fieldType === 'formula')) {
+      setEditingCell({ recordId, fieldId });
+    }
+  }, [allFields]);
 
   const handleCellDoubleClick = useCallback(
     (recordId: string, fieldId: string) => {
-      const field = allFields.find(f => f.fieldId === fieldId);
-      if (field && isEditable(field.fieldType)) {
-        setEditingCell({ recordId, fieldId });
+      // Double-click expands the record
+      const record = displayRecords.find(r => r.id === recordId);
+      if (record) {
+        setExpandedRecordId(recordId);
       }
     },
-    [allFields],
+    [displayRecords],
   );
 
   const handleRowSelect = useCallback((recordId: string) => {
@@ -382,6 +410,16 @@ export function DataGrid({ tableId }: DataGridProps) {
     (recordId: string, fieldId: string, value: any) => {
       const field = allFields.find(f => f.fieldId === fieldId);
       if (!field) return;
+
+      // Formula fields: update the formula expression in the schema, not the data
+      if (field.fieldType === 'formula') {
+        schema.updateField(tableId, fieldId, {
+          options: { ...field.options, formula: value },
+        });
+        setEditingCell(null);
+        return;
+      }
+
       // Update in DataContext if real records exist
       if (dataRecords.length > 0) {
         data.updateRecord(tableId, recordId, { [field.fieldName]: value });
@@ -396,7 +434,7 @@ export function DataGrid({ tableId }: DataGridProps) {
       }
       setEditingCell(null);
     },
-    [allFields, dataRecords.length, data, tableId],
+    [allFields, dataRecords.length, data, tableId, schema],
   );
 
   const handleExpandedSave = useCallback(
