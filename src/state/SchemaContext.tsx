@@ -4,6 +4,7 @@ import { isComputed } from '../utils/field-types';
 import { useAuth } from './AuthContext';
 import { useEmittedOps } from './EmittedOpsContext';
 import { fetchTables as apiFetchTables, fetchFields as apiFetchFields, fetchRecords as apiFetchRecords } from '../services/data/api';
+import { getTables as idbGetTables, putTablesBatch } from '../services/data/idb-store';
 
 export interface TableInfo {
   tableId: string;
@@ -97,10 +98,12 @@ function inferFieldType(value: any): FieldType {
 }
 
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
+  const { session, dbReady } = useAuth();
   const { emit } = useEmittedOps();
   const tokenRef = useRef(session?.accessToken);
   tokenRef.current = session?.accessToken;
+  const dbReadyRef = useRef(dbReady);
+  dbReadyRef.current = dbReady;
 
   const [state, setState] = useState<SchemaState>({
     tables: [],
@@ -109,45 +112,87 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     error: null,
   });
 
+  /**
+   * Deduplicate and normalize a raw table array into TableInfo[].
+   */
+  const deduplicateTables = useCallback((rawTables: any[]): TableInfo[] => {
+    const mapped: TableInfo[] = (Array.isArray(rawTables) ? rawTables : []).map((t: any) => ({
+      tableId: t.table_id || t.tableId,
+      tableName: t.table_name || t.tableName || t.table_id || '',
+      matrixRoomId: t.matrix_room_id || t.matrixRoomId,
+      primaryField: t.primary_field || t.primaryField,
+      fieldCount: t.field_count || t.fieldCount,
+      recordCount: t.record_count || t.recordCount,
+    }));
+    const normalizeName = (n: string) => n.trim().replace(/\s+/g, ' ').toLowerCase();
+    const byId = new Map<string, TableInfo>();
+    for (const t of mapped) {
+      const existing = byId.get(t.tableId);
+      if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
+        byId.set(t.tableId, t);
+      }
+    }
+    const byName = new Map<string, TableInfo>();
+    for (const t of byId.values()) {
+      const key = normalizeName(t.tableName);
+      const existing = byName.get(key);
+      if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
+        byName.set(key, t);
+      }
+    }
+    return Array.from(byName.values());
+  }, []);
+
   const loadTables = useCallback(async () => {
     const token = tokenRef.current;
     if (!token) return;
     setState(s => ({ ...s, loading: true, error: null }));
+
+    // 1. Try loading from IDB cache first (instant sidebar render)
+    if (dbReadyRef.current) {
+      try {
+        const cachedTables = await idbGetTables();
+        if (cachedTables.length > 0) {
+          const tables = deduplicateTables(cachedTables);
+          setState(s => ({ ...s, tables, loading: false }));
+          console.log(`[Schema] Loaded ${tables.length} cached tables from IDB`);
+        }
+      } catch (err) {
+        console.warn('[Schema] Failed to load cached tables from IDB:', err);
+      }
+    }
+
+    // 2. Fetch fresh from API (background refresh)
     try {
       const rawTables = await apiFetchTables(token);
-      const mapped: TableInfo[] = (Array.isArray(rawTables) ? rawTables : []).map((t: any) => ({
-        tableId: t.table_id || t.tableId,
-        tableName: t.table_name || t.tableName || t.table_id || '',
-        matrixRoomId: t.matrix_room_id || t.matrixRoomId,
-        primaryField: t.primary_field || t.primaryField,
-        fieldCount: t.field_count || t.fieldCount,
-        recordCount: t.record_count || t.recordCount,
-      }));
-      // Deduplicate tables by tableId first, then by normalized tableName,
-      // keeping the entry with the most records in each case.
-      // Normalize names to handle whitespace/casing differences from the API.
-      const normalizeName = (n: string) => n.trim().replace(/\s+/g, ' ').toLowerCase();
-      const byId = new Map<string, TableInfo>();
-      for (const t of mapped) {
-        const existing = byId.get(t.tableId);
-        if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
-          byId.set(t.tableId, t);
-        }
-      }
-      const byName = new Map<string, TableInfo>();
-      for (const t of byId.values()) {
-        const key = normalizeName(t.tableName);
-        const existing = byName.get(key);
-        if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
-          byName.set(key, t);
-        }
-      }
-      const tables = Array.from(byName.values());
+      const tables = deduplicateTables(rawTables);
       setState(s => ({ ...s, tables, loading: false }));
+
+      // 3. Write to IDB for next load
+      if (dbReadyRef.current) {
+        try {
+          const idbTables = tables.map(t => ({
+            table_id: t.tableId,
+            table_name: t.tableName,
+            matrixRoomId: t.matrixRoomId,
+            primaryField: t.primaryField,
+            fieldCount: t.fieldCount,
+            record_count: t.recordCount,
+          }));
+          await putTablesBatch(idbTables);
+        } catch (err) {
+          console.warn('[Schema] Failed to cache tables to IDB:', err);
+        }
+      }
     } catch (err: any) {
-      setState(s => ({ ...s, loading: false, error: err.message }));
+      // If we already loaded from cache, don't clobber the table list
+      setState(s => ({
+        ...s,
+        loading: false,
+        error: s.tables.length > 0 ? null : err.message,
+      }));
     }
-  }, []);
+  }, [deduplicateTables]);
 
   const loadFieldsForTable = useCallback(async (tableId: string) => {
     const token = tokenRef.current;
