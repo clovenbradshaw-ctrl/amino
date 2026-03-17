@@ -204,7 +204,6 @@ export default function Sidebar() {
         }
 
         .sidebar-table-list {
-          max-height: 50vh;
           overflow-y: auto;
         }
 
