@@ -20,9 +20,20 @@ interface SchemaState {
   error: string | null;
 }
 
+/** A field_definition record extracted from the data stream. */
+export interface FieldDefinitionRecord {
+  fieldId: string;
+  tableId: string;
+  fieldName: string;
+  fieldType: FieldType;
+  formula?: string;
+  options?: Record<string, any>;
+}
+
 interface SchemaContextValue extends SchemaState {
   loadTables: () => Promise<void>;
   loadFieldsForTable: (tableId: string) => Promise<void>;
+  applyFieldDefinitions: (tableId: string, defs: FieldDefinitionRecord[]) => void;
   deriveFieldsFromRecords: (tableId: string, records: Array<{ fields: Record<string, any> }>) => void;
   getTable: (tableId: string) => TableInfo | undefined;
   getFields: (tableId: string) => FieldDef[];
@@ -109,8 +120,10 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         fieldCount: t.field_count || t.fieldCount,
         recordCount: t.record_count || t.recordCount,
       }));
-      // Deduplicate tables by tableId first, then by tableName,
-      // keeping the entry with the most records in each case
+      // Deduplicate tables by tableId first, then by normalized tableName,
+      // keeping the entry with the most records in each case.
+      // Normalize names to handle whitespace/casing differences from the API.
+      const normalizeName = (n: string) => n.trim().replace(/\s+/g, ' ').toLowerCase();
       const byId = new Map<string, TableInfo>();
       for (const t of mapped) {
         const existing = byId.get(t.tableId);
@@ -120,9 +133,10 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
       }
       const byName = new Map<string, TableInfo>();
       for (const t of byId.values()) {
-        const existing = byName.get(t.tableName);
+        const key = normalizeName(t.tableName);
+        const existing = byName.get(key);
         if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
-          byName.set(t.tableName, t);
+          byName.set(key, t);
         }
       }
       const tables = Array.from(byName.values());
@@ -197,6 +211,40 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     } catch (err: any) {
       console.error(`Failed to load fields for table ${tableId}:`, err);
     }
+  }, []);
+
+  /**
+   * Apply field definitions extracted from field_definition records in the data stream.
+   * These records carry schema metadata (fieldId, fieldName, fieldType, formula, etc.)
+   * that should be used instead of or merged with API-returned schema.
+   */
+  const applyFieldDefinitions = useCallback((tableId: string, defs: FieldDefinitionRecord[]) => {
+    if (defs.length === 0) return;
+
+    const fields: FieldDef[] = defs.map(d => ({
+      fieldId: d.fieldId,
+      tableId: d.tableId || tableId,
+      fieldName: d.fieldName,
+      fieldType: d.fieldType,
+      isComputed: isComputed(d.fieldType),
+      isExcluded: false,
+      options: {
+        ...(d.options || {}),
+        ...(d.formula ? { formula: d.formula } : {}),
+      },
+    }));
+
+    setState(s => {
+      // Merge: field_definition records take priority, but keep any existing
+      // fields that aren't redefined (e.g., derived fields from record scan).
+      const existing = s.fieldsByTable[tableId] || [];
+      const defIds = new Set(fields.map(f => f.fieldId));
+      const kept = existing.filter(f => !defIds.has(f.fieldId));
+      return {
+        ...s,
+        fieldsByTable: { ...s.fieldsByTable, [tableId]: [...fields, ...kept] },
+      };
+    });
   }, []);
 
   const getTable = useCallback((tableId: string) => {
@@ -303,6 +351,7 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
       ...state,
       loadTables,
       loadFieldsForTable,
+      applyFieldDefinitions,
       deriveFieldsFromRecords,
       getTable,
       getFields,
