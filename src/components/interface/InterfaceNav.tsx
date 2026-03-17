@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { InterfacePageSchema } from '../../state/InterfaceContext';
 import '../../styles/interface.css';
 
@@ -23,6 +24,8 @@ export default function InterfaceNav({
   onSelectPage,
   userPowerLevel,
 }: InterfaceNavProps) {
+  const navigate = useNavigate();
+
   const visiblePages = pages.filter(p => {
     if (!p.roleVisibility || p.roleVisibility.length === 0) return true;
     if (!userPowerLevel) return true;
@@ -32,6 +35,13 @@ export default function InterfaceNav({
   return (
     <nav className="interface-nav">
       <div className="interface-nav__header">
+        <button
+          className="interface-nav__back-btn"
+          onClick={() => navigate('/schema')}
+          title="Back to main navigation"
+        >
+          {'\u2190'}
+        </button>
         <span className="interface-nav__header-dot" />
         <span className="interface-nav__header-title">Interface</span>
       </div>
