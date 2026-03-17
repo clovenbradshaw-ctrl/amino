@@ -42,6 +42,9 @@ export default function TableManager({ tables, selectedTableId, onSelectTable }:
             {t.fieldCount != null && (
               <span className="tm-item-badge">{t.fieldCount} fields</span>
             )}
+            {t.fieldCount == null && t.recordCount != null && (
+              <span className="tm-item-badge">{t.recordCount} records</span>
+            )}
           </button>
         ))}
         {filtered.length === 0 && (

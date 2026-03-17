@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import type { FieldDef, FieldType } from '../utils/field-types';
 import { isComputed } from '../utils/field-types';
 import { useAuth } from './AuthContext';
-import { fetchTables as apiFetchTables, fetchFields as apiFetchFields } from '../services/data/api';
+import { fetchTables as apiFetchTables, fetchFields as apiFetchFields, fetchRecords as apiFetchRecords } from '../services/data/api';
 
 export interface TableInfo {
   tableId: string;
@@ -106,8 +106,8 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         tableName: t.table_name || t.tableName || t.table_id || '',
         matrixRoomId: t.matrix_room_id || t.matrixRoomId,
         primaryField: t.primary_field || t.primaryField,
-        fieldCount: t.field_count || t.fieldCount || undefined,
-        recordCount: t.record_count || t.recordCount || undefined,
+        fieldCount: t.field_count || t.fieldCount,
+        recordCount: t.record_count || t.recordCount,
       }));
       // Deduplicate tables by tableId first, then by tableName,
       // keeping the entry with the most records in each case
@@ -147,10 +147,53 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         isExcluded: false,  // show all fields by default
         options: f.options || {},
       }));
-      setState(s => ({
-        ...s,
-        fieldsByTable: { ...s.fieldsByTable, [tableId]: fields },
-      }));
+
+      if (fields.length > 0) {
+        setState(s => ({
+          ...s,
+          fieldsByTable: { ...s.fieldsByTable, [tableId]: fields },
+        }));
+        return;
+      }
+
+      // No field metadata returned — derive fields from actual records
+      const recordsData = await apiFetchRecords(tableId, token);
+      const records = Array.isArray(recordsData) ? recordsData : recordsData.records || [];
+      if (records.length > 0) {
+        // Build fields inline (same logic as deriveFieldsFromRecords but
+        // without the early-return guard so it always applies here)
+        const fieldNames = new Set<string>();
+        const sampleValues = new Map<string, any>();
+        for (const record of records) {
+          let recFields = record.fields;
+          if (typeof recFields === 'string') {
+            try { recFields = JSON.parse(recFields); } catch { continue; }
+          }
+          if (!recFields || typeof recFields !== 'object') continue;
+          for (const [key, value] of Object.entries(recFields)) {
+            fieldNames.add(key);
+            if (!sampleValues.has(key) && value != null) sampleValues.set(key, value);
+          }
+        }
+        const derived: FieldDef[] = Array.from(fieldNames).map((name, i) => {
+          const fieldType = inferFieldType(sampleValues.get(name));
+          return {
+            fieldId: `fld_${tableId.slice(0, 8)}_${i}`,
+            tableId,
+            fieldName: name,
+            fieldType,
+            isComputed: isComputed(fieldType),
+            isExcluded: false,
+            options: {},
+          };
+        });
+        if (derived.length > 0) {
+          setState(s => ({
+            ...s,
+            fieldsByTable: { ...s.fieldsByTable, [tableId]: derived },
+          }));
+        }
+      }
     } catch (err: any) {
       console.error(`Failed to load fields for table ${tableId}:`, err);
     }

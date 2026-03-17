@@ -2,12 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useParams } from 'react-router-dom';
 import { useSchema, type TableInfo } from '../../state/SchemaContext';
 import { useAuth } from '../../state/AuthContext';
+import { useData } from '../../state/DataContext';
+
+function formatTimeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default function Sidebar() {
   const { tables, loading, loadTables } = useSchema();
   const { session, logout } = useAuth();
+  const { getLatestSyncTime } = useData();
   const [collapsed, setCollapsed] = useState(false);
   const [search, setSearch] = useState('');
+  const [, setTick] = useState(0);
+
+  // Re-render every 30s so "X ago" stays fresh
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     loadTables();
@@ -91,14 +112,24 @@ export default function Sidebar() {
           </nav>
 
           <div className="sidebar-footer">
-            <div className="sidebar-user">
-              <span className="sidebar-user-name" title={session?.userId}>
-                {session?.displayName || session?.userId?.split(':')[0]?.replace('@', '') || 'User'}
-              </span>
+            {getLatestSyncTime() && (
+              <div className="sidebar-sync-status" title={`Last synced: ${new Date(getLatestSyncTime()!).toLocaleString()}`}>
+                <span className="sidebar-sync-dot" />
+                <span className="sidebar-sync-text">
+                  Synced {formatTimeAgo(getLatestSyncTime()!)}
+                </span>
+              </div>
+            )}
+            <div className="sidebar-user-row">
+              <div className="sidebar-user">
+                <span className="sidebar-user-name" title={session?.userId}>
+                  {session?.displayName || session?.userId?.split(':')[0]?.replace('@', '') || 'User'}
+                </span>
+              </div>
+              <button className="sidebar-logout" onClick={logout} title="Sign out">
+                Sign out
+              </button>
             </div>
-            <button className="sidebar-logout" onClick={logout} title="Sign out">
-              Sign out
-            </button>
           </div>
         </>
       )}
@@ -204,7 +235,6 @@ export default function Sidebar() {
         }
 
         .sidebar-table-list {
-          max-height: 50vh;
           overflow-y: auto;
         }
 
@@ -260,6 +290,31 @@ export default function Sidebar() {
         .sidebar-footer {
           padding: var(--space-md) var(--space-lg);
           border-top: 1px solid rgba(255,255,255,0.08);
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-sm);
+        }
+
+        .sidebar-sync-status {
+          display: flex;
+          align-items: center;
+          gap: var(--space-xs);
+        }
+
+        .sidebar-sync-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #4ade80;
+          flex-shrink: 0;
+        }
+
+        .sidebar-sync-text {
+          font-size: var(--text-xs);
+          color: rgba(255,255,255,0.4);
+        }
+
+        .sidebar-user-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
