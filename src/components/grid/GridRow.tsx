@@ -52,6 +52,7 @@ export function GridRow({
         return (
           <div
             key={field.fieldId}
+            style={{ width, minWidth: width, maxWidth: width }}
             onClick={e => {
               e.stopPropagation();
               onCellClick(record.id, field.fieldId);

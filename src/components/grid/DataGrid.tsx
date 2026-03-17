@@ -4,6 +4,7 @@ import { useSchema } from '@/state/SchemaContext';
 import { useData } from '@/state/DataContext';
 import { useView, createDefaultView, type SortConfig as SortCfg, type FilterConfig } from '@/state/ViewContext';
 import { formatCellValue as fmtCell } from '@/utils/field-types';
+import { useFormulas } from '@/state/hooks/useFormulas';
 import type { FieldDef } from '@/utils/field-types';
 import { isEditable, formatCellValue } from '@/utils/field-types';
 import type { AminoRecord } from '@/services/data/types';
@@ -141,32 +142,51 @@ export function DataGrid({ tableId }: DataGridProps) {
   const allFields = schema.getFields(tableId);
   const loading = data.isLoading(tableId);
 
-  // Derive field definitions from records when the /amino-fields endpoint is unavailable
+  // Push field_definition records (extracted from data stream) into schema.
+  // These carry authoritative Airtable field metadata including formula expressions.
+  const fieldDefs = data.getFieldDefinitions(tableId);
+  useEffect(() => {
+    if (fieldDefs.length > 0) {
+      schema.applyFieldDefinitions(tableId, fieldDefs);
+    }
+  }, [fieldDefs, tableId, schema.applyFieldDefinitions]);
+
+  // Derive field definitions from records when no other schema source is available
   const dataRecordsForDerive = data.getRecords(tableId);
   useEffect(() => {
-    if (allFields.length === 0 && dataRecordsForDerive.length > 0 && !loading) {
+    if (allFields.length === 0 && fieldDefs.length === 0 && dataRecordsForDerive.length > 0 && !loading) {
       schema.deriveFieldsFromRecords(tableId, dataRecordsForDerive);
     }
-  }, [allFields.length, dataRecordsForDerive, loading, tableId, schema.deriveFieldsFromRecords]);
+  }, [allFields.length, fieldDefs.length, dataRecordsForDerive, loading, tableId, schema.deriveFieldsFromRecords]);
 
-  // Bridge DataContext records (recordId) to AminoRecord (id) format
+  // Formula engine — compile and evaluate formula/rollup/lookup columns
+  const { computeRecord } = useFormulas(tableId);
+
+  // Bridge DataContext records (recordId) to AminoRecord (id) format,
+  // applying formula computation to fill in computed column values.
   const dataRecords = data.getRecords(tableId);
   const records = useMemo(() => {
     if (dataRecords.length > 0) {
-      return dataRecords.map(r => ({
-        id: r.recordId,
-        tableId: r.tableId,
-        tableName: '',
-        fields: r.fields,
-        lastSynced: new Date().toISOString(),
-      }));
+      return dataRecords.map(r => {
+        // Evaluate formula/rollup/lookup fields if the engine is ready
+        const computedFields = computeRecord
+          ? computeRecord(r.fields, { recordId: r.recordId })
+          : r.fields;
+        return {
+          id: r.recordId,
+          tableId: r.tableId,
+          tableName: '',
+          fields: computedFields as Record<string, any>,
+          lastSynced: new Date().toISOString(),
+        };
+      });
     }
     // Fallback to mock data when no real records are available (dev mode)
     if (allFields.length > 0 && !loading) {
       return generateMockRecords(tableId, allFields);
     }
     return localRecords;
-  }, [dataRecords, allFields, loading, tableId, localRecords]);
+  }, [dataRecords, allFields, loading, tableId, localRecords, computeRecord]);
 
   useEffect(() => {
     if (!currentView || currentView.tableId !== tableId) {
