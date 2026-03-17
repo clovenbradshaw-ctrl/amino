@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { fetchRecords as apiFetchRecords } from '../services/data/api';
+import type { FieldType } from '../utils/field-types';
 
 export interface AminoRecord {
   tableId: string;
@@ -13,8 +14,20 @@ export interface AminoRecord {
   }>;
 }
 
+/** A field_definition record extracted from the data stream. */
+export interface FieldDefinitionRecord {
+  fieldId: string;
+  tableId: string;
+  fieldName: string;
+  fieldType: FieldType;
+  formula?: string;
+  options?: Record<string, any>;
+}
+
 interface DataState {
   recordsByTable: Record<string, AminoRecord[]>;
+  /** field_definition records separated from data, keyed by tableId */
+  fieldDefsByTable: Record<string, FieldDefinitionRecord[]>;
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
   hydrationProgress: Record<string, { loaded: number; total: number }>;
@@ -25,6 +38,7 @@ interface DataContextValue extends DataState {
   loadRecords: (tableId: string) => Promise<void>;
   getRecords: (tableId: string) => AminoRecord[];
   getRecord: (tableId: string, recordId: string) => AminoRecord | undefined;
+  getFieldDefinitions: (tableId: string) => FieldDefinitionRecord[];
   updateRecord: (tableId: string, recordId: string, fields: Record<string, any>) => void;
   addRecord: (tableId: string, record: AminoRecord) => void;
   deleteRecord: (tableId: string, recordId: string) => void;
@@ -43,6 +57,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const [state, setState] = useState<DataState>({
     recordsByTable: {},
+    fieldDefsByTable: {},
     loading: {},
     errors: {},
     hydrationProgress: {},
@@ -77,7 +92,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         rawRecords = data.items;
       }
 
-      const records: AminoRecord[] = rawRecords.map((r: any) => {
+      const allParsed: AminoRecord[] = rawRecords.map((r: any) => {
         let fields = r.fields || r;
         // Parse JSON string fields (PostgreSQL JSON columns may arrive as strings)
         if (typeof fields === 'string') {
@@ -91,9 +106,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
+      // Partition: separate field_definition records from data records.
+      // field_definition records have _set === "field_definition" and describe
+      // schema (fieldId, fieldName, fieldType, formula, etc.) rather than data.
+      const records: AminoRecord[] = [];
+      const fieldDefs: FieldDefinitionRecord[] = [];
+      for (const rec of allParsed) {
+        if (rec.fields._set === 'field_definition' && rec.fields.fieldId) {
+          fieldDefs.push({
+            fieldId: rec.fields.fieldId,
+            tableId: rec.fields.tableId || tableId,
+            fieldName: rec.fields.fieldName || rec.fields.name || rec.fields.fieldId,
+            fieldType: (rec.fields.fieldType || rec.fields.type || 'singleLineText') as FieldType,
+            formula: rec.fields.formula || undefined,
+            options: rec.fields.options || {},
+          });
+        } else {
+          records.push(rec);
+        }
+      }
+
       setState(s => ({
         ...s,
         recordsByTable: { ...s.recordsByTable, [tableId]: records },
+        fieldDefsByTable: {
+          ...s.fieldDefsByTable,
+          ...(fieldDefs.length > 0 ? { [tableId]: fieldDefs } : {}),
+        },
         loading: { ...s.loading, [tableId]: false },
         lastSyncedAt: { ...s.lastSyncedAt, [tableId]: new Date().toISOString() },
       }));
@@ -111,6 +150,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const getRecords = useCallback((tableId: string) => {
     return state.recordsByTable[tableId] || [];
   }, [state.recordsByTable]);
+
+  const getFieldDefinitions = useCallback((tableId: string) => {
+    return state.fieldDefsByTable[tableId] || [];
+  }, [state.fieldDefsByTable]);
 
   const getRecord = useCallback((tableId: string, recordId: string) => {
     return getRecords(tableId).find(r => r.recordId === recordId);
@@ -172,6 +215,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       loadRecords,
       getRecords,
       getRecord,
+      getFieldDefinitions,
       updateRecord,
       addRecord,
       deleteRecord,
