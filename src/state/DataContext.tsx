@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
+import { useEmittedOps } from './EmittedOpsContext';
 import { fetchRecords as apiFetchRecords } from '../services/data/api';
 
 export interface AminoRecord {
@@ -38,6 +39,7 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
+  const { emit } = useEmittedOps();
   const tokenRef = useRef(session?.accessToken);
   tokenRef.current = session?.accessToken;
 
@@ -97,6 +99,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         loading: { ...s.loading, [tableId]: false },
         lastSyncedAt: { ...s.lastSyncedAt, [tableId]: new Date().toISOString() },
       }));
+      emit({
+        operator: 'SYNC',
+        source: 'sync',
+        set: tableId,
+        recordId: '',
+        payload: { recordCount: records.length },
+        description: `Synced ${records.length} record(s) for table ${tableId}`,
+      });
     } catch (err: any) {
       setState(s => ({
         ...s,
@@ -126,7 +136,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ),
       },
     }));
-  }, []);
+    emit({
+      operator: 'ALT',
+      source: 'data',
+      set: tableId,
+      recordId,
+      payload: { ALT: fields },
+      description: `Updated ${Object.keys(fields).length} field(s) on ${recordId}`,
+    });
+  }, [emit]);
 
   const addRecord = useCallback((tableId: string, record: AminoRecord) => {
     setState(s => ({
@@ -136,7 +154,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         [tableId]: [...(s.recordsByTable[tableId] || []), record],
       },
     }));
-  }, []);
+    emit({
+      operator: 'INS',
+      source: 'data',
+      set: tableId,
+      recordId: record.recordId,
+      payload: { INS: record.fields },
+      description: `Created record ${record.recordId}`,
+    });
+  }, [emit]);
 
   const deleteRecord = useCallback((tableId: string, recordId: string) => {
     setState(s => ({
@@ -146,7 +172,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         [tableId]: (s.recordsByTable[tableId] || []).filter(r => r.recordId !== recordId),
       },
     }));
-  }, []);
+    emit({
+      operator: 'NUL',
+      source: 'data',
+      set: tableId,
+      recordId,
+      payload: { NUL: [recordId] },
+      description: `Deleted record ${recordId}`,
+    });
+  }, [emit]);
 
   const isLoading = useCallback((tableId: string) => {
     return state.loading[tableId] || false;

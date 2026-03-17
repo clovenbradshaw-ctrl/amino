@@ -6,6 +6,7 @@ import { SchemaProvider } from './state/SchemaContext';
 import { ViewProvider } from './state/ViewContext';
 import { PreferencesProvider } from './state/PreferencesContext';
 import { InterfaceProvider, useInterface } from './state/InterfaceContext';
+import { EmittedOpsProvider } from './state/EmittedOpsContext';
 import LoginPage from './components/auth/LoginPage';
 import AppShell from './components/layout/AppShell';
 
@@ -96,10 +97,11 @@ function AuthGate() {
   }
 
   return (
-    <DataProvider>
-      <SchemaProvider>
-        <ViewProvider>
-          <InterfaceProvider>
+    <EmittedOpsProvider>
+      <DataProvider>
+        <SchemaProvider>
+          <ViewProvider>
+            <InterfaceProvider>
             <Suspense fallback={<LoadingFallback />}>
               <Routes>
                 <Route element={<AppShell />}>
@@ -114,10 +116,11 @@ function AuthGate() {
                 </Route>
               </Routes>
             </Suspense>
-          </InterfaceProvider>
-        </ViewProvider>
-      </SchemaProvider>
-    </DataProvider>
+            </InterfaceProvider>
+          </ViewProvider>
+        </SchemaProvider>
+      </DataProvider>
+    </EmittedOpsProvider>
   );
 }
 

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { useEmittedOps } from './EmittedOpsContext';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -262,6 +263,7 @@ function getDefaultPages(): InterfacePageSchema[] {
 /* ------------------------------------------------------------------ */
 
 export function InterfaceProvider({ children }: { children: React.ReactNode }) {
+  const { emit } = useEmittedOps();
   // Seed with pre-built pages so users see content on first load
   const [pages, setPages] = useState<InterfacePageSchema[]>(getDefaultPages);
   const [loading, setLoading] = useState(false);
@@ -270,16 +272,41 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
   /* ---- Page CRUD ---- */
 
   const addPage = useCallback((page: InterfacePageSchema) => {
-    setPages(prev => [...prev, { ...page, pageId: page.pageId || `page-${uid()}` }]);
-  }, []);
+    const id = page.pageId || `page-${uid()}`;
+    setPages(prev => [...prev, { ...page, pageId: id }]);
+    emit({
+      operator: 'INS',
+      source: 'interface',
+      set: 'interface-pages',
+      recordId: id,
+      payload: { INS: { pageName: page.pageName, pageType: page.pageType } },
+      description: `Added page "${page.pageName}"`,
+    });
+  }, [emit]);
 
   const updatePage = useCallback((pageId: string, updates: Partial<InterfacePageSchema>) => {
     setPages(prev => prev.map(p => (p.pageId === pageId ? { ...p, ...updates } : p)));
-  }, []);
+    emit({
+      operator: 'ALT',
+      source: 'interface',
+      set: 'interface-pages',
+      recordId: pageId,
+      payload: { ALT: updates },
+      description: `Updated page ${pageId}: ${Object.keys(updates).join(', ')}`,
+    });
+  }, [emit]);
 
   const removePage = useCallback((pageId: string) => {
     setPages(prev => prev.filter(p => p.pageId !== pageId));
-  }, []);
+    emit({
+      operator: 'NUL',
+      source: 'interface',
+      set: 'interface-pages',
+      recordId: pageId,
+      payload: { NUL: [pageId] },
+      description: `Removed page ${pageId}`,
+    });
+  }, [emit]);
 
   const reorderPages = useCallback((ordered: string[]) => {
     setPages(prev => {
@@ -291,14 +318,23 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
   /* ---- Block CRUD ---- */
 
   const addBlock = useCallback((pageId: string, block: BlockSchema) => {
+    const id = block.blockId || `blk-${uid()}`;
     setPages(prev =>
       prev.map(p =>
         p.pageId === pageId
-          ? { ...p, blocks: [...p.blocks, { ...block, blockId: block.blockId || `blk-${uid()}` }] }
+          ? { ...p, blocks: [...p.blocks, { ...block, blockId: id }] }
           : p,
       ),
     );
-  }, []);
+    emit({
+      operator: 'INS',
+      source: 'interface',
+      set: 'interface-blocks',
+      recordId: id,
+      payload: { INS: { pageId, blockType: block.blockType, title: block.title } },
+      description: `Added block "${block.title || block.blockType}" to page ${pageId}`,
+    });
+  }, [emit]);
 
   const updateBlock = useCallback(
     (pageId: string, blockId: string, updates: Partial<BlockSchema>) => {
@@ -312,8 +348,16 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
             : p,
         ),
       );
+      emit({
+        operator: 'ALT',
+        source: 'interface',
+        set: 'interface-blocks',
+        recordId: blockId,
+        payload: { ALT: updates },
+        description: `Updated block ${blockId}: ${Object.keys(updates).join(', ')}`,
+      });
     },
-    [],
+    [emit],
   );
 
   const removeBlock = useCallback((pageId: string, blockId: string) => {
@@ -322,7 +366,15 @@ export function InterfaceProvider({ children }: { children: React.ReactNode }) {
         p.pageId === pageId ? { ...p, blocks: p.blocks.filter(b => b.blockId !== blockId) } : p,
       ),
     );
-  }, []);
+    emit({
+      operator: 'NUL',
+      source: 'interface',
+      set: 'interface-blocks',
+      recordId: blockId,
+      payload: { NUL: [blockId] },
+      description: `Removed block ${blockId} from page ${pageId}`,
+    });
+  }, [emit]);
 
   const reorderBlocks = useCallback((pageId: string, ordered: string[]) => {
     setPages(prev =>

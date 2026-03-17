@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import type { FieldDef, FieldType } from '../utils/field-types';
 import { isComputed } from '../utils/field-types';
 import { useAuth } from './AuthContext';
+import { useEmittedOps } from './EmittedOpsContext';
 import { fetchTables as apiFetchTables, fetchFields as apiFetchFields, fetchRecords as apiFetchRecords } from '../services/data/api';
 
 export interface TableInfo {
@@ -85,6 +86,7 @@ function inferFieldType(value: any): FieldType {
 
 export function SchemaProvider({ children }: { children: React.ReactNode }) {
   const { session } = useAuth();
+  const { emit } = useEmittedOps();
   const tokenRef = useRef(session?.accessToken);
   tokenRef.current = session?.accessToken;
 
@@ -235,7 +237,15 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         ),
       },
     }));
-  }, []);
+    emit({
+      operator: 'ALT',
+      source: 'schema',
+      set: tableId,
+      recordId: fieldId,
+      payload: { ALT: updates },
+      description: `Updated field ${fieldId}: ${Object.keys(updates).join(', ')}`,
+    });
+  }, [emit]);
 
   const addField = useCallback((tableId: string, field: FieldDef) => {
     setState(s => ({
@@ -245,7 +255,15 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         [tableId]: [...(s.fieldsByTable[tableId] || []), field],
       },
     }));
-  }, []);
+    emit({
+      operator: 'INS',
+      source: 'schema',
+      set: tableId,
+      recordId: field.fieldId,
+      payload: { INS: { fieldName: field.fieldName, fieldType: field.fieldType } },
+      description: `Added field "${field.fieldName}" (${field.fieldType})`,
+    });
+  }, [emit]);
 
   const deriveFieldsFromRecords = useCallback((tableId: string, records: Array<{ fields: Record<string, any> }>) => {
     // Only derive if we don't already have fields for this table
@@ -296,7 +314,15 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
         [tableId]: (s.fieldsByTable[tableId] || []).filter(f => f.fieldId !== fieldId),
       },
     }));
-  }, []);
+    emit({
+      operator: 'NUL',
+      source: 'schema',
+      set: tableId,
+      recordId: fieldId,
+      payload: { NUL: [fieldId] },
+      description: `Removed field ${fieldId}`,
+    });
+  }, [emit]);
 
   return (
     <SchemaContext.Provider value={{
