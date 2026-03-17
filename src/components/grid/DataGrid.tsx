@@ -78,6 +78,30 @@ function getMockValue(field: FieldDef, index: number): any {
   }
 }
 
+// ---- Field key normalization ----
+// Records from the API may have fields keyed by field IDs (e.g. "fldABC123")
+// while the schema uses human-readable field names (e.g. "Name"). This helper
+// adds field-name aliases so that downstream lookups via field.fieldName work.
+function normalizeFieldKeys(
+  fields: Record<string, any>,
+  fieldIdToName: Map<string, string>,
+): Record<string, any> {
+  if (fieldIdToName.size === 0) return fields;
+  let needsCopy = false;
+  for (const key of Object.keys(fields)) {
+    if (fieldIdToName.has(key)) { needsCopy = true; break; }
+  }
+  if (!needsCopy) return fields;
+  const normalized = { ...fields };
+  for (const key of Object.keys(fields)) {
+    const fieldName = fieldIdToName.get(key);
+    if (fieldName && !(fieldName in normalized)) {
+      normalized[fieldName] = fields[key];
+    }
+  }
+  return normalized;
+}
+
 // ---- Filter application ----
 function applyFilter(value: any, operator: string, filterValue: any): boolean {
   const strVal = value != null ? String(value).toLowerCase() : '';
@@ -162,6 +186,18 @@ export function DataGrid({ tableId }: DataGridProps) {
   // Formula engine — compile and evaluate formula/rollup/lookup columns
   const { computeRecord } = useFormulas(tableId);
 
+  // Map fieldId -> fieldName so we can normalize record keys that arrive as
+  // field IDs into the human-readable names the grid expects for lookups.
+  const fieldIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of allFields) {
+      if (f.fieldId !== f.fieldName) {
+        map.set(f.fieldId, f.fieldName);
+      }
+    }
+    return map;
+  }, [allFields]);
+
   // Bridge DataContext records (recordId) to AminoRecord (id) format,
   // applying formula computation to fill in computed column values.
   // Also normalise field keys: API may return values keyed by fieldId
@@ -198,7 +234,10 @@ export function DataGrid({ tableId }: DataGridProps) {
           id: r.recordId,
           tableId: r.tableId,
           tableName: '',
-          fields: computedFields as Record<string, any>,
+          fields: normalizeFieldKeys(
+            computedFields as Record<string, any>,
+            fieldIdToName,
+          ),
           lastSynced: new Date().toISOString(),
         };
       });
@@ -208,7 +247,7 @@ export function DataGrid({ tableId }: DataGridProps) {
       return generateMockRecords(tableId, allFields);
     }
     return localRecords;
-  }, [dataRecords, allFields, loading, tableId, localRecords, computeRecord]);
+  }, [dataRecords, allFields, loading, tableId, localRecords, computeRecord, fieldIdToName]);
 
   useEffect(() => {
     if (!currentView || currentView.tableId !== tableId) {
