@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import type { BlockSchema } from '../../../state/InterfaceContext';
+import { useData } from '../../../state/DataContext';
 import '../../../styles/interface.css';
 
 interface SummaryBlockProps {
@@ -9,6 +10,7 @@ interface SummaryBlockProps {
 /**
  * Block config shape:
  * {
+ *   tableId?: string;
  *   metrics: Array<{
  *     label: string;
  *     fieldName: string;
@@ -49,10 +51,27 @@ function aggregate(
 
 export default function SummaryBlock({ block }: SummaryBlockProps) {
   const config = block.config;
+  const tableId: string = config.tableId || '';
   const metrics: Array<{ label: string; fieldName: string; aggregation: string }> =
     config.metrics || [];
-  const records: Array<{ recordId: string; fields: Record<string, any> }> =
-    config.records || [];
+
+  const dataCtx = useData();
+
+  // Load live data when a tableId is configured
+  useEffect(() => {
+    if (tableId) {
+      dataCtx.loadRecords(tableId);
+    }
+  }, [tableId, dataCtx.loadRecords]);
+
+  // Use live data from DataContext if available, else fall back to config
+  const liveRecords = dataCtx.getRecords(tableId);
+  const records = useMemo(() => {
+    if (tableId && liveRecords.length > 0) {
+      return liveRecords.map(r => ({ recordId: r.recordId, fields: r.fields }));
+    }
+    return config.records || [];
+  }, [tableId, liveRecords, config.records]);
 
   const computed = useMemo(
     () =>

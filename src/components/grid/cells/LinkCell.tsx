@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { formatCellValue } from '@/utils/field-types';
+import type { FieldDef } from '@/utils/field-types';
+import { LinkedRecordModal } from './LinkedRecordModal';
 
 interface LinkCellProps {
   value: any;
   isEditing: boolean;
   onChange: (value: any) => void;
+  field?: FieldDef;
 }
 
-export function LinkCell({ value }: LinkCellProps) {
-  const [expanded, setExpanded] = useState(false);
+export function LinkCell({ value, field }: LinkCellProps) {
+  const [modalOpen, setModalOpen] = useState(false);
   const links: any[] = Array.isArray(value) ? value : [];
 
   if (links.length === 0) return null;
@@ -21,19 +24,19 @@ export function LinkCell({ value }: LinkCellProps) {
         className="grid-cell-record-links"
         onClick={e => {
           e.stopPropagation();
-          setExpanded(!expanded);
+          setModalOpen(true);
         }}
       >
         {displayText}
       </span>
-      {expanded && links.length > 0 && (
-        <div style={{ fontSize: 11, marginTop: 2 }}>
-          {links.map((link, i) => (
-            <div key={i} style={{ opacity: 0.7 }}>
-              {typeof link === 'string' ? link : link.id || link.name || JSON.stringify(link)}
-            </div>
-          ))}
-        </div>
+      {field && (
+        <LinkedRecordModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          linkedValues={links}
+          linkField={field}
+          linkedTableId={field.options?.linkedTableId}
+        />
       )}
     </div>
   );

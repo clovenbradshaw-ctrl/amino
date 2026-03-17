@@ -57,7 +57,7 @@ export function GridCell({ value, field, isEditing, onChange, width }: GridCellP
     }
 
     if (fieldType === 'multipleRecordLinks') {
-      return <LinkCell value={value} isEditing={isEditing} onChange={onChange} />;
+      return <LinkCell value={value} isEditing={isEditing} onChange={onChange} field={field} />;
     }
 
     // Fallback: display formatted value

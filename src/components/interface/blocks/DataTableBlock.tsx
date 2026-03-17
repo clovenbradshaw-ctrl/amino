@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { BlockSchema } from '../../../state/InterfaceContext';
+import { useData } from '../../../state/DataContext';
+import { useSchema } from '../../../state/SchemaContext';
 import { formatCellValue } from '../../../utils/field-types';
 import type { FieldType } from '../../../utils/field-types';
 import '../../../styles/interface.css';
@@ -23,11 +25,47 @@ interface DataTableBlockProps {
 
 export default function DataTableBlock({ block, onRowClick }: DataTableBlockProps) {
   const config = block.config;
-  const columns: Array<{ fieldId: string; fieldName: string; fieldType: FieldType; width?: number }> =
-    config.columns || [];
-  const records: Array<{ recordId: string; fields: Record<string, any> }> = config.records || [];
   const tableId: string = config.tableId || '';
   const pageSize: number = config.pageSize || 25;
+
+  const data = useData();
+  const schema = useSchema();
+
+  // Load live data when a tableId is configured
+  useEffect(() => {
+    if (tableId) {
+      data.loadRecords(tableId);
+      schema.loadFieldsForTable(tableId);
+    }
+  }, [tableId, data.loadRecords, schema.loadFieldsForTable]);
+
+  // Use live data from DataContext if available, else fall back to config
+  const liveRecords = data.getRecords(tableId);
+  const liveFields = schema.getFields(tableId);
+
+  const records = useMemo(() => {
+    if (tableId && liveRecords.length > 0) {
+      return liveRecords.map(r => ({
+        recordId: r.recordId,
+        fields: r.fields,
+      }));
+    }
+    return config.records || [];
+  }, [tableId, liveRecords, config.records]);
+
+  const columns = useMemo(() => {
+    if (tableId && liveFields.length > 0) {
+      return liveFields
+        .filter(f => !f.isExcluded)
+        .map(f => ({
+          fieldId: f.fieldId,
+          fieldName: f.fieldName,
+          fieldType: f.fieldType,
+          width: undefined as number | undefined,
+        }));
+    }
+    return config.columns || [];
+  }, [tableId, liveFields, config.columns]);
 
   const [page, setPage] = useState(0);
 
