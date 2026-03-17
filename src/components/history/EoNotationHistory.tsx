@@ -296,7 +296,7 @@ export default function EoNotationHistory() {
                 <span className="eo-event-chevron">{isExpanded ? '▾' : '▸'}</span>
               </div>
               {isExpanded && (
-                <div className="eo-event-detail">
+                <div className="eo-event-detail" onClick={(e) => e.stopPropagation()}>
                   <div className="eo-detail-meta">
                     <span><strong>Source:</strong> {event._source}</span>
                     <span><strong>Record:</strong> {event.recordId || '—'}</span>
