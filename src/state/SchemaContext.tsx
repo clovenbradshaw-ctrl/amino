@@ -10,6 +10,7 @@ export interface TableInfo {
   matrixRoomId?: string;
   primaryField?: string;
   fieldCount?: number;
+  recordCount?: number;
 }
 
 interface SchemaState {
@@ -100,13 +101,31 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     setState(s => ({ ...s, loading: true, error: null }));
     try {
       const rawTables = await apiFetchTables(token);
-      const tables: TableInfo[] = (Array.isArray(rawTables) ? rawTables : []).map((t: any) => ({
+      const mapped: TableInfo[] = (Array.isArray(rawTables) ? rawTables : []).map((t: any) => ({
         tableId: t.table_id || t.tableId,
         tableName: t.table_name || t.tableName || t.table_id || '',
         matrixRoomId: t.matrix_room_id || t.matrixRoomId,
         primaryField: t.primary_field || t.primaryField,
-        fieldCount: t.field_count || t.fieldCount || t.record_count || t.recordCount,
+        fieldCount: t.field_count || t.fieldCount || undefined,
+        recordCount: t.record_count || t.recordCount || undefined,
       }));
+      // Deduplicate tables by tableId first, then by tableName,
+      // keeping the entry with the most records in each case
+      const byId = new Map<string, TableInfo>();
+      for (const t of mapped) {
+        const existing = byId.get(t.tableId);
+        if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
+          byId.set(t.tableId, t);
+        }
+      }
+      const byName = new Map<string, TableInfo>();
+      for (const t of byId.values()) {
+        const existing = byName.get(t.tableName);
+        if (!existing || (t.recordCount ?? 0) > (existing.recordCount ?? 0)) {
+          byName.set(t.tableName, t);
+        }
+      }
+      const tables = Array.from(byName.values());
       setState(s => ({ ...s, tables, loading: false }));
     } catch (err: any) {
       setState(s => ({ ...s, loading: false, error: err.message }));
