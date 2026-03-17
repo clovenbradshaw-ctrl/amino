@@ -45,6 +45,7 @@ interface SchemaContextValue extends SchemaState {
   updateField: (tableId: string, fieldId: string, updates: Partial<FieldDef>) => void;
   addField: (tableId: string, field: FieldDef) => void;
   removeField: (tableId: string, fieldId: string) => void;
+  updateRecordCount: (tableId: string, count: number) => void;
 }
 
 const SchemaContext = createContext<SchemaContextValue | null>(null);
@@ -354,6 +355,15 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.fieldsByTable]);
 
+  const updateRecordCount = useCallback((tableId: string, count: number) => {
+    setState(s => ({
+      ...s,
+      tables: s.tables.map(t =>
+        t.tableId === tableId ? { ...t, recordCount: count } : t
+      ),
+    }));
+  }, []);
+
   const removeField = useCallback((tableId: string, fieldId: string) => {
     setState(s => ({
       ...s,
@@ -388,6 +398,7 @@ export function SchemaProvider({ children }: { children: React.ReactNode }) {
       updateField,
       addField,
       removeField,
+      updateRecordCount,
     }}>
       {children}
     </SchemaContext.Provider>
