@@ -18,6 +18,7 @@ interface DataState {
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
   hydrationProgress: Record<string, { loaded: number; total: number }>;
+  lastSyncedAt: Record<string, string>;
 }
 
 interface DataContextValue extends DataState {
@@ -29,6 +30,8 @@ interface DataContextValue extends DataState {
   deleteRecord: (tableId: string, recordId: string) => void;
   isLoading: (tableId: string) => boolean;
   getError: (tableId: string) => string | null;
+  getLastSyncedAt: (tableId: string) => string | null;
+  getLatestSyncTime: () => string | null;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -43,6 +46,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     loading: {},
     errors: {},
     hydrationProgress: {},
+    lastSyncedAt: {},
   });
 
   // Track in-flight requests to prevent duplicate fetches
@@ -91,6 +95,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ...s,
         recordsByTable: { ...s.recordsByTable, [tableId]: records },
         loading: { ...s.loading, [tableId]: false },
+        lastSyncedAt: { ...s.lastSyncedAt, [tableId]: new Date().toISOString() },
       }));
     } catch (err: any) {
       setState(s => ({
@@ -151,6 +156,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return state.errors[tableId] || null;
   }, [state.errors]);
 
+  const getLastSyncedAt = useCallback((tableId: string) => {
+    return state.lastSyncedAt[tableId] || null;
+  }, [state.lastSyncedAt]);
+
+  const getLatestSyncTime = useCallback(() => {
+    const times = Object.values(state.lastSyncedAt);
+    if (times.length === 0) return null;
+    return times.reduce((latest, t) => (t > latest ? t : latest));
+  }, [state.lastSyncedAt]);
+
   return (
     <DataContext.Provider value={{
       ...state,
@@ -162,6 +177,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       deleteRecord,
       isLoading,
       getError,
+      getLastSyncedAt,
+      getLatestSyncTime,
     }}>
       {children}
     </DataContext.Provider>
