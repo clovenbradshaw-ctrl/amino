@@ -6,6 +6,7 @@ import { FilterBuilder } from './FilterBuilder';
 import { SortConfig } from './SortConfig';
 import { GroupConfig } from './GroupConfig';
 import { ViewSwitcher } from './ViewSwitcher';
+import { FieldsPanel } from './FieldsPanel';
 
 interface GridToolbarProps {
   fields: FieldDef[];
@@ -120,34 +121,14 @@ export function GridToolbar({ fields, totalRows }: GridToolbarProps) {
               className={classNames('grid-toolbar-btn', hasHidden && 'grid-toolbar-btn--active')}
               onClick={() => togglePanel('hideFields')}
             >
-              <span className="grid-toolbar-btn-icon">{'\u2205'}</span>
-              Hide fields{hasHidden ? ` (${currentView.hiddenFieldIds.length})` : ''}
+              <span className="grid-toolbar-btn-icon">{'\u2630'}</span>
+              Fields{hasHidden ? ` (${currentView.hiddenFieldIds.length} hidden)` : ''}
             </button>
             {openPanel === 'hideFields' && (
               <>
                 <div className="grid-popover-backdrop" onClick={() => setOpenPanel(null)} />
-                <div className="grid-popover">
-                  <div className="grid-popover-title">Toggle field visibility</div>
-                  <div className="grid-hidden-fields-list">
-                    {fields.map(f => {
-                      const hidden = currentView.hiddenFieldIds.includes(f.fieldId);
-                      return (
-                        <div
-                          key={f.fieldId}
-                          className="grid-hidden-field-item"
-                          onClick={() => view.toggleFieldVisibility(f.fieldId)}
-                        >
-                          <div
-                            className={classNames(
-                              'grid-hidden-field-toggle',
-                              !hidden && 'grid-hidden-field-toggle--on',
-                            )}
-                          />
-                          <span>{f.fieldName}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="grid-popover grid-popover--fields">
+                  <FieldsPanel fields={fields} onClose={() => setOpenPanel(null)} />
                 </div>
               </>
             )}

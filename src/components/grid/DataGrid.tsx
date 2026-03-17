@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchema } from '@/state/SchemaContext';
 import { useData } from '@/state/DataContext';
 import { useView, createDefaultView, type SortConfig as SortCfg, type FilterConfig } from '@/state/ViewContext';
+import { formatCellValue as fmtCell } from '@/utils/field-types';
 import type { FieldDef } from '@/utils/field-types';
 import { isEditable, formatCellValue } from '@/utils/field-types';
 import type { AminoRecord } from '@/services/data/types';
@@ -117,7 +118,7 @@ export function DataGrid({ tableId }: DataGridProps) {
   const schema = useSchema();
   const data = useData();
   const view = useView();
-  const { currentView, setCurrentView, addSort, removeSort, setFieldWidth } = view;
+  const { currentView, setCurrentView, addSort, removeSort, setFieldWidth, setFieldOrder } = view;
 
   // State
   const [localRecords, setLocalRecords] = useState<AminoRecord[]>([]);
@@ -311,6 +312,34 @@ export function DataGrid({ tableId }: DataGridProps) {
     [setFieldWidth],
   );
 
+  const handleReorder = useCallback(
+    (fieldIds: string[]) => {
+      setFieldOrder(fieldIds);
+    },
+    [setFieldOrder],
+  );
+
+  const handleAutoFit = useCallback(
+    (fieldId: string) => {
+      const field = allFields.find(f => f.fieldId === fieldId);
+      if (!field) return;
+      // Measure the widest content across visible records
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      let maxW = ctx.measureText(field.fieldName).width + 48; // header text + icon + padding
+      for (const record of displayRecords) {
+        const val = record.fields[field.fieldName];
+        const text = val != null ? String(fmtCell(val, field.fieldType)) : '';
+        const w = ctx.measureText(text).width + 24; // cell padding
+        if (w > maxW) maxW = w;
+      }
+      setFieldWidth(fieldId, Math.max(80, Math.min(Math.ceil(maxW), 600)));
+    },
+    [allFields, displayRecords, setFieldWidth],
+  );
+
   const handleCellClick = useCallback((recordId: string, fieldId: string) => {
     setSelectedRecordId(recordId);
   }, []);
@@ -491,6 +520,8 @@ export function DataGrid({ tableId }: DataGridProps) {
           fieldWidths={fieldWidths}
           onSort={handleSort}
           onResize={handleResize}
+          onReorder={handleReorder}
+          onAutoFit={handleAutoFit}
           onContextMenu={handleContextMenu}
         />
 
