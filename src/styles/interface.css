@@ -365,13 +365,23 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
   border-bottom: 1px solid var(--color-border, #e0e0e0);
+  border-right: 1px solid var(--color-border, #e0e0e0);
   white-space: nowrap;
+}
+
+.data-table-block th:last-child {
+  border-right: none;
 }
 
 .data-table-block td {
   padding: var(--space-sm, 8px) var(--space-md, 12px);
-  border-bottom: 1px solid var(--color-border-light, #eee);
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  border-right: 1px solid var(--color-border, #e0e0e0);
   color: var(--color-text-primary, #1a1a2e);
+}
+
+.data-table-block td:last-child {
+  border-right: none;
 }
 
 .data-table-block tr {
