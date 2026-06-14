@@ -1,28 +1,27 @@
 {
-  "name": "amino",
-  "private": true,
+  "name": "amino-immigration",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
+  "description": "AMINO Immigration — encrypted case-management for RK Lacy Law, built on the matrix-events backend (no database, no API keys) with the eoreader3 Ask-your-data engine.",
   "scripts": {
+    "predev": "node scripts/assemble-index.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "prebuild": "node scripts/assemble-index.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "assemble": "node scripts/assemble-index.mjs",
+    "test": "node test/airtable-schema.test.cjs && node test/formula.test.cjs && node test/schema-export.test.cjs && node test/crypto-envelope.test.mjs && node test/blocks.test.mjs && node test/drivebackup.test.mjs && node test/data-chat.test.cjs && node test/amino-app.test.mjs"
   },
   "dependencies": {
-    "@dnd-kit/core": "^6.1.0",
-    "@dnd-kit/sortable": "^8.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
-    "@tanstack/react-virtual": "^3.10.0",
-    "idb": "^8.0.0",
+    "@babel/standalone": "^7.29.0",
+    "matrix-js-sdk": "^41.5.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.5.4",
-    "vite": "^5.4.0"
+    "vite": "^6.3.5",
+    "vite-plugin-top-level-await": "^1.5.0",
+    "vite-plugin-wasm": "^3.4.1"
   }
 }

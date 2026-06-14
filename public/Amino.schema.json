@@ -1,0 +1,2336 @@
+{
+  "workspace": "Amino",
+  "tables": [
+    {
+      "name": "Client Info",
+      "declared": true,
+      "observed": true,
+      "rowCount": 2166,
+      "fields": [
+        {
+          "name": "DOB",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "A#",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "First Name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Middle Name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Family Name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Country",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "box_shared_link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Place of Entry",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Entry Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Address",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Phone Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Email",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PPID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Metadata",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Box_Folder_ID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detained",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Engagement Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Address Line 1",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "City",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Zip (5)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Address Updated Last By",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Box ID 2.0",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "box share 2.0",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Last Modified By",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CMV sync",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Address Line 2",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "smsFolder",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Intake Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Created At",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Created Q Single Select",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Email copy",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Xano Last Updated",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Imported table 9",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "URL to box folder (not shared)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "DOB 2.0",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Entry Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Entry Date (Legacy) 2025-01-06",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Email Imported",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Push Box",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Box Folder Nmae",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PPID copy",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "box folder name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client_Photo",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bahr Client",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bahr",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "bahr_import_flatpack_data",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "clio_contact_id",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "box sync",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Case Tags",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Relief Sought",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Notes 2.0",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Push PP Update",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Events 2",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Events",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Events copy",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Contact Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Revision",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Imported table 5",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Possible Alt PPID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Birth City",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Birth State",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "State Residence",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "dedupe_history",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "box_dedup_status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "related_client",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ_Relationship",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Push",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Zip (+4)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Address Update",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Tags",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Box Legacy ID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Oct 2 -Oct 31st Collections",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Applications",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Matters",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Table 44",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ_Templates",
+          "type": "text",
+          "inferred": true
+        }
+      ],
+      "partitions": {
+        "declared": [],
+        "observed": [],
+        "undeclared": [],
+        "hasPartitions": false
+      },
+      "views": []
+    },
+    {
+      "name": "Case Master View",
+      "declared": true,
+      "observed": true,
+      "rowCount": 13494,
+      "fields": [
+        {
+          "name": "Meta Data",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Last Modified By",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Update Tracker EAD Pers",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Name Help",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Case Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "clio_contact_id",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "clio_matter_id",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Matter_Flatpack",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Description",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Audit25-Q1",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "File Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "EOIR VERIF",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Case Tags",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Merits Final Decision",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Final IM Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Merits Final Decision Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Lead File In Proceedings",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Case Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Record Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PD Candidate",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Date Relief Filed",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA Receipt",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA CD Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS FOIA Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA PIN #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Closed Box #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Closed File",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PD Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-589 Filed/Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Print Record Sent",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Record Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Hyperlink",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Mail Tracking #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS FOIA Link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS FOIA",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Req Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "EDO CJ Link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI E-REQ Pin",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Clock Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Obligor Name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Obligor Contact Info",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Amount of Bond",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Sent Forms",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Amt Collected",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond USPS Track #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Mat.",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Received Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Canceled Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Recovery Fee",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Research/Task Case",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Research Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Research/Task Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA Manager",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Eligible (child)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJS Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ County",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Service/GAL",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Visa Bulletin Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Case Status (Revised)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Minor Case",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Duplicate Case",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Pending EOIR Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS (Active)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PD Factors",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "DHS ACC",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Verified Inventory Case",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Family Visa Availability Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Visa Category",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "EAD Comments",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "JDR Ct Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-360 Receipt Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "JDR Hearing",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Relief Filed?",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Priority Date (I-360)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Initial Retainer $",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Monthly Pmt $",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Total Contract $",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Recurring $ Start Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Data Test",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Contract Creator",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Contract",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ/Residency Project",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS/NVC Main Applications",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Application Decision Notice Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Receipt Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "EAD Draft Start",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Intake Manager",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Receipt # (DACA)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Contact Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Current USCIS application",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Draft Filing Indicator",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Engagement Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Engagement Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Matter",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Contract Generator",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Asylum Case Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Court File Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Asylum Engaged",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Biom Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Asylum Filing link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Fear Interview",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Filing Strategy",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZDF Sent Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICH Prep Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-589 Venue",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Biometrics App Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Mail Tracking #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Sent in Mail Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Mailbox I589 Date rec'd",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Mail Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZDF Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Aff. I589 Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Refiles Track Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Pleadings Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Pleadings Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Pleadings Needed",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "NTA Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Generate Pleadings",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Last Xano Sync",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Current with contract",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Refile CM",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Table 45",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Notice Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Fee Collected",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Notice of AAF",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Entity",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detained Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Date Custody Filed",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE FOIA Rec'd Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FOIA Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PD General Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IJ Dismissal Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Granted IM Court Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IM Bond",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS FOIA Sent Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS FOIA Tracking #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Contacted Law Firm",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Attny Request Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Attorney Rec Req URL",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Firm Contact Information",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Firm Name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Atty Rec Req Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Request Direction",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Asylum Intake Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Photo",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Aff. Receipt Link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Intake Appt",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Court Contract Generator",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Payment Method",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Due",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Master Hearing Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Invoiced Link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Link to box",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Identifier",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Verified UAC Receipt",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Notice Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Court Contract",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Send EAD",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZAR/ZDF Receipt Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Grant Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Review Requested",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Forum",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detention/Risk Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CC Relief ",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CC Motions",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CC Court",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZDF Receipt Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Type of Clock Issue",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IOLTA Payments 3",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF Contact Fronted",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Derivative",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Intake Send",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Note to Intake",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Engaged Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Interview Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "10 day Client Notice",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Litigation Bd Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Application Sent Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Contract Scan",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Contract",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "NVC Case Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Waiver/Special Visa?",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "NVC Contact Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "NVC Case Created",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Audit25-Q3",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "(Historical) Sent U-Visa Cert",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa Cert Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa Case Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "County/State for Cert",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "42B/42A Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal?",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Confirmed I589 Receipt",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZDF Tracking",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Not Client",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Current Case Motion Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "TPS Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Motion Decision",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IOLTA Payments 2",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U Visa Certification Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-360 Mailed Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Draft Deadline",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Decision Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "FBI Record Sent",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Remaining Contract Balance",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Prop. Contract (refile)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detained Now (ICE)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Date Bond Granted",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Motion Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Brief Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Brief Filed Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Litigation Board?",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "EOIR Filed Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Denial Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Priority Level ",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Notice Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Order Pre-ICH",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "RFE/RFI (topic)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IJ Order detail",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "RFE Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-246 Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I246 Docs Stamp Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I246 Equities",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detention Risk Factors",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Waiver/Special Visa Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Waiver/Special Visa Decision Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Research Start Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ_Templates_Created",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "T/U/VAWA Decision Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Basis for Reopening",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "AAF submitted",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-131 Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-131 Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589/42B Review",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Travel Parole Tracking #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "UAC Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeals Contract Generator",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Deadline to File",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "42B/42A Engagement Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Work",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ZAR Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CBP Record Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CBP Reference Number copy",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CBP Record Received",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Receipt # (TPS) ",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "TPS Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE FOIA Link",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE FOIA Stage",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Prop. Departure Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I246 Decision Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Attorney Review",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS 42A/42B Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS 42A/42B Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Create Bot",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Notes (TPS)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS (in Court)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "212 Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "212 Decision Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Type",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE FOIA Password",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "42A/42B CT Filing Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "42A/42B Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "VD Bond Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "OBIM Record Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "OBIM Record Received",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "TPS Mail Tracking #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "USCIS Email Password",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "TPS Approval Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "PD Requested",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "notes for bond",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Decision",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Decision Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Push SIJ Contract Thru",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "CGRS Case Number",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detained: Engaged?",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Proof I589 Filing",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "IJ ICH Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "SIJ Client Contact Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Asylum Interview Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ID",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Paid ACH Truist",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Priority Case Notes",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "U-Visa Receipt #",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Gantt Design",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Court Hearing Derivatives",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Priority Case Indicatoir",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Detention Contract",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Appeal Reconsideration Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I589 Historical Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "MTR Engagement Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Brief Draft Deadline",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Supplement Filed Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Passport Photos",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-360 Approval Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Bond Packet Sent Out",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "ICE Bond Receipt",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Due Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "gmail_message_id",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "RFE Due On",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Client Contact Status",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Biometric Notice Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Receipt # (I-131)",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-131 Receipt Date",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "Hearing Medium",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "I-131 Approval Date",
+          "type": "text",
+          "inferred": true
+        }
+      ],
+      "partitions": {
+        "declared": [],
+        "observed": [],
+        "undeclared": [],
+        "hasPartitions": false
+      },
+      "views": []
+    },
+    {
+      "name": "case_notes",
+      "declared": true,
+      "observed": true,
+      "rowCount": 119375,
+      "fields": [
+        {
+          "name": "Activity",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Client_PP_ID",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Contact",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Created_By",
+          "options": [],
+          "type": "select",
+          "inferred": false
+        },
+        {
+          "name": "Date",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Description",
+          "type": "longtext",
+          "inferred": false
+        },
+        {
+          "name": "Due_Date",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Last_Update_By",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Matter",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Modified",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "RecordId",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Softr_Link_to_clients",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "Type",
+          "options": [],
+          "type": "select",
+          "inferred": false
+        },
+        {
+          "name": "Updated",
+          "type": "date",
+          "inferred": false
+        },
+        {
+          "name": "client_airtable_id",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "eventId",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "id",
+          "type": "number",
+          "inferred": false
+        },
+        {
+          "name": "matter_id",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "pp_note_id",
+          "type": "text",
+          "inferred": false
+        },
+        {
+          "name": "source",
+          "type": "url",
+          "inferred": false
+        },
+        {
+          "name": "tags",
+          "options": [],
+          "type": "select",
+          "inferred": false
+        },
+        {
+          "name": "time_raw",
+          "type": "date",
+          "inferred": false
+        },
+        {
+          "name": "unix_timestamp",
+          "type": "text",
+          "inferred": false
+        }
+      ],
+      "partitions": {
+        "declared": [],
+        "observed": [],
+        "undeclared": [],
+        "hasPartitions": false
+      },
+      "views": []
+    },
+    {
+      "name": "import",
+      "declared": false,
+      "observed": true,
+      "rowCount": 11,
+      "fields": [
+        {
+          "name": "airtable_base",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "airtable_table",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "chunk_index",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "derived_set",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "field_plan",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "has_header",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "import_group",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "import_seq",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "mime",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "rows_imported",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "shape",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "size",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "file",
+          "type": "text",
+          "inferred": true
+        },
+        {
+          "name": "imported_at",
+          "type": "text",
+          "inferred": true
+        }
+      ],
+      "partitions": {
+        "declared": [],
+        "observed": [],
+        "undeclared": [],
+        "hasPartitions": false
+      },
+      "views": []
+    }
+  ],
+  "links": [
+    {
+      "from": "Client Info",
+      "rel": "Custodian",
+      "to": "Client Info"
+    },
+    {
+      "from": "Client Info",
+      "rel": "From field: Custodian",
+      "to": "Client Info"
+    },
+    {
+      "from": "Client Info",
+      "rel": "Abandoning Parent",
+      "to": "Client Info"
+    },
+    {
+      "from": "Client Info",
+      "rel": "From field: Abandoning Parent",
+      "to": "Client Info"
+    },
+    {
+      "from": "Client Info",
+      "rel": "Notified_Parent",
+      "to": "Client Info"
+    },
+    {
+      "from": "Client Info",
+      "rel": "From field: Notified_Parent",
+      "to": "Client Info"
+    },
+    {
+      "from": "Case Master View",
+      "rel": "Petitioner",
+      "to": "Case Master View"
+    },
+    {
+      "from": "Case Master View",
+      "rel": "Consolidated Cases",
+      "to": "Case Master View"
+    },
+    {
+      "from": "Case Master View",
+      "rel": "Associated Case",
+      "to": "Case Master View"
+    },
+    {
+      "from": "Client Info",
+      "rel": "Case Master View // Activities",
+      "to": "Case Master View"
+    },
+    {
+      "from": "Case Master View",
+      "rel": "Edit Client Info",
+      "to": "Client Info"
+    }
+  ],
+  "generatedAt": "2026-06-13T18:56:04.894Z"
+}

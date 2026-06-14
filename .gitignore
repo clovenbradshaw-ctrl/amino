@@ -5,3 +5,4 @@ dist/
 .env
 .env.*
 *.tsbuildinfo
+.DS_Store
