@@ -16,6 +16,11 @@ new Function('window', fs.readFileSync('public/engine.js', 'utf8'))(globalThis);
 const ME = globalThis.MatrixEngine;
 assert.ok(ME && ME.fold && ME.OP, 'MatrixEngine (fold engine) loaded');
 
+// import-row materializer + the Database data engine (window.AminoRows / AminoDB)
+new Function('window', fs.readFileSync('public/import-rows.js', 'utf8'))(globalThis);
+new Function('window', fs.readFileSync('public/db-data.js', 'utf8'))(globalThis);
+assert.ok(globalThis.AminoDB && globalThis.AminoDB.buildTable, 'AminoDB (db engine) loaded');
+
 // stub the live homeserver bridge — this test is about the fold/projection
 globalThis.MatrixLive = {
   subscribe: () => () => {},
@@ -78,10 +83,24 @@ ok(lopez && lopez.rel.length === 1, 'CON edge → related individual');
 // 3) full view-model render with folded data + workspace/actions
 c.clients = clients; c.curWs = '!ws1'; c.workspaces = [{ roomId: '!ws1', name: 'RK Lacy Law' }];
 c.state.connected = true; c.state.cur = 0;
+c._liveState = ME.fold(timeline); c._renderState = ME.fold(timeline); // demo-like: no imports
 vm = c.renderVals();
 ok(vm.clients.length === 2, 'render: client list shows folded clients');
 ok(/Lopez|San Juan/.test(vm.cur.name), 'render: record panel header is a real client');
+
+// 3b) the Database view (only computed on the db screen) shows every real set
+c.state.view = 'db';
+vm = c.renderVals();
 ok(vm.dbRows.length === 2, 'render: Database view shows folded rows');
+ok(vm.dbTabs.some((t) => t.name === 'client'), 'Database lists the real `client` set as a tab');
+ok(vm.dbColumns.some((col) => col.name === 'Family Name'), 'Database columns are the folded fields');
+
+// 3c) opening a row populates the record drawer from the real entity
+c.state.dbRecord = { set: 'client', anchor: A };
+vm = c.renderVals();
+ok(vm.dbRecordOpen === true && /Lopez/.test(vm.dbRecordTitle), 'record drawer opens the real entity');
+ok(vm.dbRecordFields.some((f) => f.label === 'A#' && /098-447-201/.test(f.value)), 'record drawer shows folded fields');
+c.state.dbRecord = null;
 ok(vm.workspaceNav.some((w) => w.name === 'RK Lacy Law'), 'workspaceNav lists the signed-in user\'s workspace');
 ok(vm.workspaceNav.some((w) => w.name === 'New workspace'), 'workspaceNav exposes New workspace');
 ok(vm.quickActions.some((q) => q.label === 'New client'), 'quick action: New client');

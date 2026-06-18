@@ -86,9 +86,22 @@ active source before every fold (`applyEngineNS` in `ui/amino-app.js`).
 
 **Imported sets → CRM.** Bulk Airtable/CSV imports are stored as a derived
 "set" (schema + one source blob, rows materialized on read), not per-row events.
-`public/import-rows.js` reconstructs those rows; amino projects the firm's
-**Client Info** set into the client list / record panel / Database view
-(`projectLive` / `materializeLive` in `ui/amino-app.js`).
+`public/import-rows.js` reconstructs those rows; the **Client Info** set is
+projected into the client list / record panel (`projectLive` / `materializeLive`
+in `ui/amino-app.js`).
+
+**Database view = bare-metal's real grid engine.** The Database screen no longer
+hand-rolls a fixed three-table projection. It runs on
+[`public/db-data.js`](public/db-data.js) (`window.AminoDB`) — the `buildTable` /
+`augmentState` / `listSets` / link-resolution logic lifted **verbatim** from
+bare-metal-eo's `table-view.jsx` + `app.jsx`. So the grid enumerates **every**
+set the workspace actually holds (each imported Airtable set, plus native
+`client` / `note` entities), with real schema-or-inferred columns, real rows
+materialized from the blobs, and relational links resolved from each row's
+`_linkRefs` into the same `CON` edges a hand-drawn link produces. Keeping this as
+a vendored copy of bare-metal's derivation — rather than a parallel
+reimplementation — is what stops the Database view from drifting away from the
+backend again (see [`docs/REBUILD-NOTES.md`](docs/REBUILD-NOTES.md)).
 
 ## Deploy
 

@@ -10322,11 +10322,6 @@ class Component extends DCLogic {
       {id:'court',name:'Court',layouts:['courtClient']},
       {id:'foia',name:'FOIA',layouts:['foiaEntry']},
     ];
-    this.VIEWS={
-      clientInfo:[{id:'all',name:'All clients',icon:'table'},{id:'engaged',name:'Engaged',icon:'funnel-simple'},{id:'prospects',name:'Prospects',icon:'funnel-simple'},{id:'detained',name:'Detained',icon:'funnel-simple'}],
-      caseMaster:[{id:'all',name:'All cases',icon:'table'},{id:'proc',name:'In proceedings',icon:'funnel-simple'},{id:'uscis',name:'USCIS pending',icon:'funnel-simple'},{id:'detained',name:'Detained',icon:'funnel-simple'},{id:'granted',name:'Granted',icon:'funnel-simple'}],
-      caseNotes:[{id:'all',name:'All activity',icon:'table'},{id:'hearings',name:'Hearings',icon:'funnel-simple'},{id:'tasks',name:'Tasks',icon:'funnel-simple'},{id:'filings',name:'Filings',icon:'funnel-simple'}],
-    };
     // ── Live Matrix transport: real homeserver login, encrypted rooms, fold ──
     this.NS='app.aminoimmigration'; this.HOMESERVER='https://app.aminoimmigration.com';
     this.clients=[]; this.workspaces=[]; this.curWs=null;
@@ -10341,7 +10336,7 @@ class Component extends DCLogic {
     // the DOM.
     this._importRows={}; this._importInFlight=new Set(); this._liveState=null;
     this.CLIENT_SET_RE=/client\s*info/i; this.MAX_CLIENTS=4000;
-    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'clientInfo', dbSearch:'', dbView:{clientInfo:'all',caseMaster:'all',caseNotes:'all'}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
+    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
       connected:false, connecting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live timeline changes, and resume a
@@ -10512,9 +10507,13 @@ class Component extends DCLogic {
       const events=this.eventsFor(this.curWs);
       const state=this.ME().fold(events);
       this._liveState=state;
-      // Demo: clients are native client/note entities. Live: project the
-      // imported "Client Info" set (rows materialized from blobs) PLUS any
-      // native client entities; kick off fetching any rows not cached yet.
+      // The state the Database grid + CRM both read: live = fold + materialized
+      // import rows (+ link edges) via window.AminoDB.augmentState; demo = the
+      // fold itself (no imports). Built once here so every projection — clients,
+      // the grid, the record drawer — sees one consistent source of truth.
+      this._renderState=(window.AminoDB&&!this.demo)
+        ? window.AminoDB.augmentState(state,this._importRows,window.AminoDB.activeImportAnchors(state))
+        : state;
       this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
       if(!this.demo) this.materializeLive(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
@@ -10531,22 +10530,26 @@ class Component extends DCLogic {
     if(!names.size) names.add('Client Info');
     return [...names];
   }
-  // Build the live client list: materialized import rows (re-typed as 'client')
-  // merged under any native client entities, folded through buildClients.
+  // Build the live client list from the augmented render state: only entities in
+  // a client set (the firm's "Client Info", or native `client`) become clients —
+  // case/note/other imported sets stay their own tables in the Database view.
   projectLive(state){
+    const rs=this._renderState||state||{entities:{},connections:[]};
+    const clientSets=new Set(this.clientSetNames(rs));
     const entities={};
-    for(const a in this._importRows){ if(!state.entities||!state.entities[a]) continue; for(const row of this._importRows[a]){ entities[row._anchor]=Object.assign({},row,{_type:'client'}); } }
-    Object.assign(entities, state.entities||{});
-    let clients=this.buildClients({entities, connections:(state&&state.connections)||[]});
+    for(const a in (rs.entities||{})){ const e=rs.entities[a]; if(!e) continue; if(e._type==='client') entities[a]=e; else if(clientSets.has(e._type)) entities[a]=Object.assign({},e,{_type:'client'}); }
+    let clients=this.buildClients({entities, connections:(rs.connections)||[]});
     if(this.MAX_CLIENTS && clients.length>this.MAX_CLIENTS) clients=clients.slice(0,this.MAX_CLIENTS);
     return clients;
   }
-  // Fetch + cache any client-set import rows not yet materialized, then
-  // re-project and re-render. No-ops once every import blob is cached.
+  // Fetch + cache the rows for EVERY imported set in this workspace (newest
+  // generation only) — not just clients — so the Database grid fills in as each
+  // blob streams in. Each completion rebuilds the render state and re-projects.
   materializeLive(state){
-    const AR=window.AminoRows; if(!AR||!AR.importsForSet) return;
-    const imps=[]; this.clientSetNames(state).forEach(n=>{ AR.importsForSet(state,n).forEach(e=>imps.push(e)); });
-    const missing=imps.filter(e=>e&&e._anchor&&!this._importRows[e._anchor]&&!this._importInFlight.has(e._anchor));
+    const AR=window.AminoRows, DB=window.AminoDB; if(!AR||!AR.materializeImportRows||!DB) return;
+    const imps=DB.importEntitiesOf(state);
+    const active=AR.activeImports?AR.activeImports(imps):imps;
+    const missing=active.filter(e=>e&&e._anchor&&!this._importRows[e._anchor]&&!this._importInFlight.has(e._anchor));
     if(!missing.length) return;
     missing.forEach(imp=>{
       this._importInFlight.add(imp._anchor);
@@ -10555,6 +10558,7 @@ class Component extends DCLogic {
         .then(()=>{
           this._importInFlight.delete(imp._anchor);
           const st=this._liveState||state;
+          this._renderState=DB.augmentState(st,this._importRows,DB.activeImportAnchors(st));
           this.clients=this.projectLive(st);
           let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
           this.setState({cur});
@@ -10686,14 +10690,104 @@ class Component extends DCLogic {
 
   addBlock(afterId){ this.mutate(b=>{ const nb={id:'b'+Math.random().toString(36).slice(2,6),type:'grid',cols:1,label:'New section',fields:['First Name']}; if(afterId==null){b.unshift(nb);} else {const i=b.findIndex(x=>x.id===afterId); b.splice(i+1,0,nb);} }); }
 
-  dbTables(){
-    return {
-      clientInfo:{name:'Client Info',icon:'identification-card',count:String((this.clients||[]).length),fields:312,
-        columns:[{k:'__name',n:'Name',icon:'text-aa'},{k:'A#',n:'A#',icon:'hash'},{k:'Country',n:'Country',icon:'tag'},{k:'DOB',n:'DOB',icon:'calendar-blank'},{k:'Entry Date',n:'Entry Date',icon:'calendar-blank'},{k:'Relief Sought',n:'Relief Sought',icon:'tag'},{k:'Client Engagement Status',n:'Engagement',icon:'tag'},{k:'Phone Number',n:'Phone',icon:'phone'},{k:'box_shared_link',n:'box_shared_link',icon:'link-simple'}],open:true},
-      caseMaster:{name:'Case Master View',icon:'briefcase',count:String((this.clients||[]).length),fields:312,
-        columns:[{k:'Client Name',n:'Client Name',icon:'text-aa'},{k:'Case Type',n:'Case Type',icon:'tag'},{k:'Case Status',n:'Case Status',icon:'tag'},{k:'Matter',n:'Matter',icon:'text-aa'},{k:'NTA Date',n:'NTA Date',icon:'calendar-blank'},{k:'Priority Level',n:'Priority',icon:'tag'},{k:'I589 Biom Status',n:'I589 Biom Status',icon:'tag'},{k:'Date Relief Filed',n:'Date Relief Filed',icon:'calendar-blank'}],open:true},
-      caseNotes:{name:'case_notes',icon:'note',count:String((this.clients||[]).reduce((n,c)=>n+((c.notes&&c.notes.length)||0),0)),fields:22,columns:[{k:'act',n:'Activity',icon:'text-aa'},{k:'type',n:'Type',icon:'tag'},{k:'date',n:'Date',icon:'calendar-blank'},{k:'by',n:'Created_By',icon:'tag'},{k:'desc',n:'Description',icon:'text-align-left'},{k:'matter',n:'Matter',icon:'text-aa'}],open:false},
-    };
+  // ── Database view — driven by bare-metal's real derivation (window.AminoDB) ──
+  // Every native/imported set in the workspace becomes a tab; columns and rows
+  // come from buildTable over the augmented render state, so the grid shows the
+  // SAME tables/columns/rows/links bare-metal does. No hand-rolled projection.
+  iconForSet(name){ const n=String(name||'').toLowerCase();
+    if(/client|person|contact|individual/.test(n)) return 'identification-card';
+    if(/case|matter|proceed/.test(n)) return 'briefcase';
+    if(/note|activity|event|log/.test(n)) return 'note';
+    if(/foia|request/.test(n)) return 'file-magnifying-glass';
+    if(/doc|file|attach|exhibit/.test(n)) return 'paperclip';
+    if(/invoice|payment|billing/.test(n)) return 'receipt';
+    return 'table'; }
+  iconForType(t){ return {number:'hash',date:'calendar-blank',boolean:'check-square',select:'tag',multiselect:'tags',json:'brackets-curly',longtext:'text-align-left',url:'link-simple',email:'at',duration:'timer'}[t]||'text-aa'; }
+  isClientSet(name){ return this.CLIENT_SET_RE.test(String(name||''))||name==='client'; }
+  // Best display label for any entity, across every set shape.
+  rowLabel(e){ if(!e) return '';
+    const direct=e.Name||e.title||e.Matter||e['Client Name']||e.body||e.claim||e.what;
+    if(direct) return String(direct);
+    const fam=e['Family Name'], first=e['First Name'];
+    if(fam||first) return (fam||'')+(fam&&first?', ':'')+(first||'');
+    return String(e._anchor||'').slice(-8)||'—'; }
+
+  // The whole Database view-model: tabs, columns, rows, the views rail, and the
+  // record drawer — all from the real fold/augmented state. Returns exactly the
+  // db* / onDb* bindings the template consumes.
+  dbModel(){
+    const S=this.state, DB=window.AminoDB;
+    const state=this._renderState || (this.curWs?this.ME().fold(this.eventsFor(this.curWs)):{entities:{},connections:[],schema:{},partitions:{}});
+    const empty={dbName:'Database',dbCount:'0',dbFieldCount:0,dbTabs:[],dbColumns:[],dbColTemplate:'1fr',dbRows:[],
+      dbSearch:S.dbSearch,onDbSearch:(e)=>this.setState({dbSearch:e.target.value}),
+      dbViewSearch:S.dbViewSearch,onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
+      dbViews:[],dbViewName:'All records',dbViewIcon:'table',dbTools:[],
+      dbRecordOpen:false,dbRecordTitle:'',dbRecordSub:'',dbRecordInitials:'',dbRecordAv:'#8F95A0',dbRecordIcon:'note',dbRecordFields:[],dbRecordIsClient:false,
+      onDbRecordCrm:()=>{},onCloseDbRecord:()=>this.setState({dbRecord:null})};
+    // The grid only renders inside the Database screen ({{ isDb }}), so skip the
+    // O(rows) buildTable/cell mapping entirely on every other view — otherwise a
+    // 12k-row imported sheet would be re-projected on each CRM keystroke.
+    if(!DB || S.view!=='db') return empty;
+    const sets=DB.listSets(this._liveState||state, state);
+    let activeName=S.dbTable; if(!sets.some(s=>s.name===activeName)) activeName=(sets[0]&&sets[0].name)||'';
+    if(!activeName) return empty;
+    const tabs=sets.map(s=>{ const on=s.name===activeName; return {name:s.name,icon:this.iconForSet(s.name),count:String(s.expected||s.localRows||0),
+      bg:on?'#fff':'transparent',underline:on?'#C2872B':'transparent',color:on?'#18202D':'#6B7682',weight:on?'700':'500',icolor:on?'#C2872B':'#9aa3ad',
+      onPick:()=>this.setState({dbTable:s.name,dbSearch:'',dbRecord:null})}; });
+    const built=DB.buildTable(activeName,state), cols=built.cols, rows=built.rows;
+    const MAXCOLS=12, shown=cols.slice(0,MAXCOLS);
+    const columns=[{k:'__name',n:'Name',icon:'text-aa',type:'name'}].concat(shown.map(c=>({k:c.name,n:c.name,icon:this.iconForType(c.type),type:c.type})));
+    const dq=S.dbSearch.trim().toLowerCase();
+    const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
+    const dbRows=rows.filter(match).map(e=>{ const label=this.rowLabel(e); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
+    const dbColTemplate=columns.map((c,i)=> i===0?'minmax(210px,1.4fr)':((c.type==='longtext'||c.type==='json')?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
+    const active=sets.find(s=>s.name===activeName)||{};
+    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(dbRows.length),onPick:()=>{}}]
+      .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
+    return Object.assign({
+      dbName:activeName, dbCount:String(active.expected||active.localRows||dbRows.length), dbFieldCount:cols.length,
+      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows,
+      dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value}),
+      dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
+      dbViews:views, dbViewName:'All records', dbViewIcon:'table',
+      dbTools:[{icon:'eye-slash',label:'Hide fields'},{icon:'funnel-simple',label:'Filter'},{icon:'arrows-down-up',label:'Sort'},{icon:'rows',label:'Group'}],
+    }, this.dbRecordModel(state, activeName));
+  }
+  // One grid cell for entity `e`, column `col`. i===0 is the synthetic primary
+  // (avatar + display label); the rest format by inferred type (tag chips for
+  // selects, ✓/✗ for booleans, a box-folder affordance for Box links).
+  dbCell(e,col,label,i){
+    if(i===0||col.k==='__name'){ const ii=this.ini(e['Family Name'],e['First Name']); const initials=ii!=='?'?ii:((String(label).trim()[0]||'•').toUpperCase()); return {isPrimary:true,isTag:false,isBox:false,isPlain:false,av:this.colorFor(e['Country']||label||e._anchor)[1],initials,text:label||'—'}; }
+    let v=e[col.k];
+    if(v==null||v===''||(Array.isArray(v)&&!v.length)) return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:'—',color:'#C2C7CE'};
+    if(col.k==='box_shared_link'||/(^https?:\/\/)?(app\.)?box\.com/.test(String(v))) return {isPrimary:false,isTag:false,isBox:true,isPlain:false,text:String(v)};
+    if(col.type==='boolean') { const on=(v===true||v==='Yes'||v==='true'); return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:on?'✓':'✗',color:on?'#0F7048':'#B42318'}; }
+    if(col.type==='select'||this.SEL[col.k]||this.TAGK.includes(col.k)){ const sv=Array.isArray(v)?v.join(', '):String(v); const [bg,fg]=this.colorFor(sv); return {isPrimary:false,isTag:true,isBox:false,isPlain:false,text:sv,bg,fg}; }
+    if(Array.isArray(v)) v=v.join(', '); else if(typeof v==='object') v=JSON.stringify(v);
+    return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:String(v),color:'#46505B'};
+  }
+  // The record drawer for the currently-open row: every stored field plus the
+  // related records reached through CON edges / schema.links (linkedTypesFor).
+  dbRecordModel(state, activeName){
+    const rec=this.state.dbRecord;
+    const empty={dbRecordOpen:false,dbRecordTitle:'',dbRecordSub:'',dbRecordInitials:'',dbRecordAv:'#8F95A0',dbRecordIcon:'note',dbRecordFields:[],dbRecordIsClient:false,onDbRecordCrm:()=>{},onCloseDbRecord:()=>this.setState({dbRecord:null})};
+    if(!rec||!rec.anchor) return empty;
+    const e=((state&&state.entities)||{})[rec.anchor]; if(!e) return empty;
+    const setName=rec.set||e._type||activeName, label=this.rowLabel(e), DB=window.AminoDB;
+    const fields=[];
+    for(const k in e){ if(k[0]==='_')continue; let v=e[k]; if(v==null||v===''||(Array.isArray(v)&&!v.length))continue;
+      const isBox=k==='box_shared_link'||/(^https?:\/\/)?(app\.)?box\.com/.test(String(v));
+      const isTag=!isBox&&(!!this.SEL[k]||this.TAGK.includes(k));
+      let tb='#F0F2F4',tf='#5A5D63'; const sv=Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):String(v));
+      if(isTag){ const p=this.colorFor(sv); tb=p[0]; tf=p[1]; }
+      fields.push({label:k,value:sv,isBox:!!isBox,isTag:!!isTag,isPlain:!isBox&&!isTag,tagBg:tb,tagFg:tf}); }
+    if(DB){ DB.linkedTypesFor(setName,state).forEach(ot=>{ const links=DB.linksFromAnchor(rec.anchor,ot,state); if(links.length) fields.push({label:'Related — '+ot,value:links.map(l=>l.label).join(', '),isBox:false,isTag:false,isPlain:true,tagBg:'#F0F2F4',tagFg:'#5A5D63'}); }); }
+    const ii=this.ini(e['Family Name'],e['First Name']);
+    return {dbRecordOpen:true,dbRecordTitle:label||'Record',dbRecordSub:setName+(e['A#']?(' · '+e['A#']):''),
+      dbRecordInitials:ii!=='?'?ii:((String(label).trim()[0]||'•').toUpperCase()),dbRecordAv:this.colorFor(e['Country']||label||rec.anchor)[1],
+      dbRecordIcon:this.iconForSet(setName),dbRecordFields:fields,dbRecordIsClient:this.isClientSet(setName),
+      onDbRecordCrm:()=>{ const idx=(this.clients||[]).findIndex(c=>c.anchor===rec.anchor); this.setState({view:'crm',panelView:'clients',tab:'clientinfo',dbRecord:null,cur:idx>=0?idx:this.state.cur}); },
+      onCloseDbRecord:()=>this.setState({dbRecord:null})};
   }
 
   renderVals(){
@@ -10738,50 +10832,9 @@ class Component extends DCLogic {
     this.curLayout().forEach(blk=>{ const vm=this.blockVM(S.cur,blk); if(!vm.skip) blocks.push(vm); });
 
     const lm=this.LMETA[S.layout];
-    const T=this.dbTables(), DT=T[S.dbTable], dq=S.dbSearch.trim().toLowerCase();
-    const VW=this.VIEWS[S.dbTable], curViewId=S.dbView[S.dbTable]||'all', curView=VW.find(v=>v.id===curViewId)||VW[0];
-    const noteType={hearings:'Hearing',tasks:'Task',filings:'Filing'};
-    const passClient=(c)=>{ if(S.dbTable==='clientInfo'){ if(curViewId==='engaged')return c.f['Client Engagement Status']==='Engaged'; if(curViewId==='prospects')return c.f['Client Engagement Status']==='Prospect'; if(curViewId==='detained')return c.f['Case Status']==='Detained'; return true; } if(curViewId==='proc')return c.f['Case Status']==='In proceedings'; if(curViewId==='uscis')return c.f['Case Status']==='USCIS pending'; if(curViewId==='detained')return c.f['Case Status']==='Detained'; if(curViewId==='granted')return c.f['Case Status']==='Granted'; return true; };
-    const viewCount=(vid)=>{ if(S.dbTable==='caseNotes'){ let n=0; this.clients.forEach(c=>{ (S.extraNotes[c.id]||[]).forEach(()=>{ if(!noteType[vid])n++; }); c.notes.forEach(x=>{ if(!noteType[vid]||x.type===noteType[vid])n++; }); }); return n; } let n=0; this.clients.forEach(c=>{ const keep=(S.dbTable==='clientInfo')?(vid==='all'||(vid==='engaged'&&c.f['Client Engagement Status']==='Engaged')||(vid==='prospects'&&c.f['Client Engagement Status']==='Prospect')||(vid==='detained'&&c.f['Case Status']==='Detained')):(vid==='all'||(vid==='proc'&&c.f['Case Status']==='In proceedings')||(vid==='uscis'&&c.f['Case Status']==='USCIS pending')||(vid==='detained'&&c.f['Case Status']==='Detained')||(vid==='granted'&&c.f['Case Status']==='Granted')); if(keep)n++; }); return n; };
-    let dbRows=[];
-    if(S.dbTable==='caseNotes'){
-      const all=[]; this.clients.forEach(c=>{ (S.extraNotes[c.id]||[]).forEach(t=>all.push({act:t,type:'Note',date:'just now',by:'CVega',desc:'',matter:c.f['Matter']})); c.notes.forEach(n=>all.push({act:n.act,type:n.type,date:n.date,by:n.by,desc:n.desc||'—',matter:c.f['Matter']})); });
-      dbRows=all.filter(r=>(!noteType[curViewId]||r.type===noteType[curViewId])&&(!dq||(r.act+' '+r.matter+' '+r.by).toLowerCase().includes(dq))).map(r=>({cursor:'pointer',onOpen:()=>this.setState({dbRecord:{table:'caseNotes',note:r}}),cells:DT.columns.map((col,i)=>{
-        const v=r[col.k];
-        if(i===0)return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:v,color:'#18202D'};
-        if(col.k==='type'){const [bg,fg]=this.colorFor(v);return {isPrimary:false,isTag:true,isBox:false,isPlain:false,text:v,bg,fg};}
-        return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:v||'—',color:v?'#46505B':'#C2C7CE'};
-      })}));
-    } else {
-      const lay=S.dbTable==='caseMaster'?'courtClient':'editClient';
-      dbRows=this.clients.filter(c=>{ if(!passClient(c))return false; const blob=(c.f['Family Name']+' '+c.f['First Name']+' '+c.f['A#']+' '+c.f['Matter']+' '+c.f['Country']).toLowerCase(); return !dq||blob.includes(dq); }).map(c=>({cursor:'pointer',onOpen:()=>this.setState({dbRecord:{table:S.dbTable,ci:c.id}}),
-        cells:DT.columns.map((col,i)=>{
-          if(col.k==='__name'){ return {isPrimary:true,isTag:false,isBox:false,isPlain:false,av:c.av,initials:c.initials,text:c.f['Family Name']+', '+c.f['First Name']}; }
-          let v= col.k==='Client Name'? (c.f['Family Name']+', '+c.f['First Name']) : this.rawVal(c.id,col.k);
-          if(i===0) return {isPrimary:true,isTag:false,isBox:false,isPlain:false,av:c.av,initials:c.initials,text:v};
-          if(col.k==='box_shared_link') return {isPrimary:false,isTag:false,isBox:!!v,isPlain:!v,text:v||'—',color:'#C2C7CE'};
-          if(this.TAGK.includes(col.k)||this.SEL[col.k]){ if(!v||v==='—')return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:'—',color:'#C2C7CE'}; const [bg,fg]=this.colorFor(v); return {isPrimary:false,isTag:true,isBox:false,isPlain:false,text:v,bg,fg}; }
-          return {isPrimary:false,isTag:false,isBox:false,isPlain:true,text:v||'—',color:v&&v!=='—'?'#46505B':'#C2C7CE'};
-        })}));
-    }
-    const dbColTemplate=DT.columns.map((c,i)=>i===0?'minmax(210px,1.4fr)':(c.k==='desc'?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
-    const dbRec=S.dbRecord; let dbRecordOpen=false,dbRecordTitle='',dbRecordSub='',dbRecordInitials='',dbRecordAv='#8F95A0',dbRecordFields=[],dbRecordCrm=()=>{},dbRecordIcon='note';
-    if(dbRec){
-      dbRecordOpen=true;
-      if(dbRec.table==='caseNotes'){
-        const r=dbRec.note; dbRecordTitle=r.act; dbRecordSub='case_notes'; dbRecordIcon='note'; dbRecordInitials='✎';
-        const [tb,tf]=this.colorFor(r.type);
-        dbRecordFields=[{label:'Type',value:r.type,isTag:true,tagBg:tb,tagFg:tf},{label:'Date',value:r.date},{label:'Created By',value:r.by},{label:'Matter',value:r.matter||'—'},{label:'Description',value:r.desc||'—'}];
-      } else {
-        const c=this.clients[dbRec.ci]; dbRecordTitle=c.f['Family Name']+', '+c.f['First Name']; dbRecordInitials=c.initials; dbRecordAv=c.av;
-        dbRecordSub=(dbRec.table==='caseMaster'?'Case Master View':'Client Info')+' · '+c.f['A#'];
-        dbRecordIcon=dbRec.table==='caseMaster'?'briefcase':'identification-card';
-        const cols=this.dbTables()[dbRec.table].columns;
-        dbRecordFields=cols.filter(col=>col.k!=='__name').map(col=>{ let v=col.k==='Client Name'?(c.f['Family Name']+', '+c.f['First Name']):this.rawVal(dbRec.ci,col.k); const isTag=this.TAGK.includes(col.k)||!!this.SEL[col.k]; let tb='#F0F2F4',tf='#5A5D63'; if(isTag&&v&&v!=='—'){const p=this.colorFor(v);tb=p[0];tf=p[1];} return {label:col.n,value:(v==null||v==='')?'—':v,isBox:col.k==='box_shared_link',isTag:isTag&&v&&v!=='—',tagBg:tb,tagFg:tf}; });
-        dbRecordCrm=()=>this.setState({view:'crm',cur:dbRec.ci,panelView:'clients',tab:'clientinfo',layout:dbRec.table==='caseMaster'?'courtClient':'editClient',dbRecord:null});
-      }
-      dbRecordFields=dbRecordFields.map(f=>({label:f.label,value:f.value,isBox:!!f.isBox,isTag:!!f.isTag,isPlain:!f.isBox&&!f.isTag,tagBg:f.tagBg||'#F0F2F4',tagFg:f.tagFg||'#5A5D63'}));
-    }
+    // The Database view-model (tabs/columns/rows/views/record drawer) — computed
+    // from the real fold + materialized import rows via window.AminoDB.
+    const db=this.dbModel();
 
     return {
       isCrm,isDb,isSpaces,
@@ -10854,14 +10907,8 @@ class Component extends DCLogic {
       sessUser:(S.session&&S.session.userId)||'', sessHs:((S.session&&S.session.homeserver)||'').replace(/^https?:\/\//,''), onDisconnect:()=>this.disconnect(),
       meName:(S.session&&S.session.userId)?String(S.session.userId).replace(/^@/,'').split(':')[0]:'Not signed in',
       meSub:(S.session&&S.session.userId)?('signed in · '+(String(S.session.userId).split(':')[1]||this.HOMESERVER.replace(/^https?:\/\//,''))):'app.aminoimmigration.com',
-      dbName:DT.name, dbIcon:DT.icon, dbCount:DT.count, dbFieldCount:DT.fields, dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value}),
-      dbTabs:Object.entries(T).map(([id,t])=>{const on=S.dbTable===id;return {name:t.name,icon:t.icon,count:t.count,bg:on?'#fff':'transparent',underline:on?'#C2872B':'transparent',color:on?'#18202D':'#6B7682',weight:on?'700':'500',icolor:on?'#C2872B':'#9aa3ad',onPick:()=>this.setState({dbTable:id,dbSearch:''})};}),
-      dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
-      dbViews:VW.filter(v=>{const vq=S.dbViewSearch.trim().toLowerCase();return !vq||v.name.toLowerCase().includes(vq);}).map(v=>{const on=curViewId===v.id;return {name:v.name,icon:v.icon,iw:on?'-bold':'',icolor:on?'#C2872B':'#9aa3ad',bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',active:on,count:viewCount(v.id),onPick:()=>this.setState({dbView:Object.assign({},S.dbView,{[S.dbTable]:v.id}),dbSearch:''})};}),
-      dbViewName:curView.name, dbViewIcon:curView.icon,
-      dbTools:[{icon:'eye-slash',label:'Hide fields'},{icon:'funnel-simple',label:'Filter'},{icon:'arrows-down-up',label:'Sort'},{icon:'rows',label:'Group'}],
-      dbColumns:DT.columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows, dbRowsShown:dbRows.length,
-      dbRecordOpen, dbRecordTitle, dbRecordSub, dbRecordInitials, dbRecordAv, dbRecordIcon, dbRecordFields, dbRecordIsClient:!!(dbRec&&dbRec.table!=='caseNotes'), onDbRecordCrm:dbRecordCrm, onCloseDbRecord:()=>this.setState({dbRecord:null}),
+      // Database view-model — tabs, columns, rows, views rail, record drawer.
+      ...db,
     };
   }
 }
@@ -10886,6 +10933,10 @@ class Component extends DCLogic {
 <!-- Materializes lazily-stored import set rows (window.AminoRows) so AMINO can
      project the data bare-metal imported (clients/cases/notes) into its CRM. -->
 <script src="import-rows.js"></script>
+<!-- The Database view's data engine (window.AminoDB): bare-metal's real
+     buildTable / augmentState / listSets derivation, so the grid shows every
+     imported set with real columns, rows, and relational links. -->
+<script src="db-data.js"></script>
 <script src="data-chat.js"></script>
 <!-- Design-component runtime: binds the <x-dc> template to the Component view-model -->
 <script src="dc-runtime.js"></script>
