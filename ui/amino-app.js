@@ -86,15 +86,23 @@ class Component extends DCLogic {
     this._importRows={}; this._importInFlight=new Set(); this._liveState=null;
     this.CLIENT_SET_RE=/client\s*info/i; this.MAX_CLIENTS=4000;
     this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'clientInfo', dbSearch:'', dbView:{clientInfo:'all',caseMaster:'all',caseNotes:'all'}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
-      connected:false, connecting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
+      connected:false, connecting:false, booting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
-    // Boot: bind the namespace, subscribe to live timeline changes, and resume a
-    // restored session (the foundation auto-unlocks a prior login on cold start).
+    // Boot: bind the namespace, subscribe to live changes, and adopt a restored
+    // session. The foundation auto-unlocks a prior login on cold start, but that
+    // resume is ASYNC — it can settle AFTER this component has mounted and shown
+    // the login form. If we left the form up, the user would sign in again,
+    // minting a SECOND device and resetting this device's crypto store (the
+    // "login issue when already logged in" bug). So: while the resume is in
+    // flight, show a "resuming" screen instead of the login form, and adopt the
+    // session the moment it lands (here on cold boot, or via onLiveChange when
+    // the bridge notifies that the resume finished).
     this.whenLive().then(()=>{ try{
       this.ME().setNamespace(this.NS);
-      if(!this._unsub) this._unsub=this.ML().subscribe(()=>{ if(this.demo) this.refold(); else this.loadWorkspaces(); });
-      if(this.ML().isAuthed&&this.ML().isAuthed()){ const sess=this.ML().getSession()||{}; this.setState({connected:true,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||''},view:'spaces'}); this.loadWorkspaces(); }
-    }catch(e){} });
+      if(!this._unsub) this._unsub=this.ML().subscribe(()=>this.onLiveChange());
+      this.setState({booting:!!(this.ML().isBooting&&this.ML().isBooting())});
+      this.adoptLiveSession();
+    }catch(e){ this.setState({booting:false}); } });
   }
 
   // ── foundation bridges (window.MatrixLive = real homeserver; window.MatrixEngine = fold) ──
@@ -102,20 +110,60 @@ class Component extends DCLogic {
   ML(){ return window.MatrixLive; }
   ME(){ return window.MatrixEngine; }
 
+  // Mirror the foundation's live auth state into the UI. Idempotent — safe to
+  // call as often as we like. Returns true when a live (non-demo) Matrix
+  // session is active. The FIRST time we observe that session we land on the
+  // spaces launchpad: this is what lets a cold-boot resume (which finishes
+  // asynchronously, often after this component has already rendered the login
+  // form) REPLACE the login form rather than leave it on screen, where a click
+  // would start a duplicate login — a new device + a crypto-store reset.
+  adoptLiveSession(){
+    if(this.demo) return false;
+    const ML=this.ML();
+    if(!ML||!(ML.isAuthed&&ML.isAuthed())) return false;
+    if(!this.state.connected){
+      const sess=(ML.getSession&&ML.getSession())||{};
+      this.demo=false;
+      this.setState({connected:true,demo:false,booting:false,connecting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||''},view:'spaces'});
+      this.loadWorkspaces();
+    }
+    return true;
+  }
+  // The foundation bridge fired a change: a cold-boot resume settled, a room
+  // updated, or the session ended. Keep the UI in step with it.
+  onLiveChange(){
+    if(this.demo){ this.refold(); return; }
+    const ML=this.ML();
+    // Resume settled — drop the "resuming" screen so the adopted session (or
+    // the login form, if there was nothing to resume) can take over.
+    if(this.state.booting&&!(ML&&ML.isBooting&&ML.isBooting())) this.setState({booting:false});
+    const wasConnected=this.state.connected;
+    // Adopt a session that came up after we mounted (the core fix); when we
+    // were already connected, keep the workspace list fresh on every change.
+    if(this.adoptLiveSession()&&wasConnected) this.loadWorkspaces();
+  }
+
   // Sign in against the hardcoded firm homeserver. No app-managed credential store:
   // the password unlocks the user's own Matrix account + E2EE keys on this device.
   async connect(){
+    try{ await this.whenLive(); }catch(e){}
+    // Safety net for the resume race: if the foundation already restored a
+    // session (or one came up while this form was on screen), adopt it instead
+    // of logging in again. A second m.login.password mints a NEW device and
+    // resets this device's crypto store — the "won't sign me in when I'm
+    // already signed in" bug. The login form is only reachable when signed out,
+    // so reaching here while authed always means the resume beat the UI.
+    if(this.adoptLiveSession()) return;
     const u=(this.state.loginUser||'').trim();
     if(!u||!this.state.loginPass){ this.setState({loginErr:'Enter your Matrix ID and password.'}); return; }
-    this.setState({loginErr:'',connecting:true});
+    this.setState({loginErr:'',connecting:true,booting:false});
     try{
-      await this.whenLive();
       await this.ML().login({ homeserver:this.HOMESERVER, username:u, password:this.state.loginPass });
       const sess=this.ML().getSession()||{};
       this.demo=false;
       // Land on the spaces launchpad — let the user pick which workspace to open
       // instead of dropping silently into the first one.
-      this.setState({connected:true,demo:false,connecting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||u},loginPass:'',view:'spaces'});
+      this.setState({connected:true,demo:false,connecting:false,booting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||u},loginPass:'',view:'spaces'});
       this.loadWorkspaces();
     }catch(e){ this.setState({connecting:false,loginErr:(e&&e.message)||'Sign-in failed.'}); }
   }
@@ -128,10 +176,10 @@ class Component extends DCLogic {
     if(saved&&Array.isArray(saved.rooms)&&saved.rooms.length){ this._demoRooms=saved.rooms; this._demoEvents=saved.eventsByRoom||{}; }
     else { const built=this.buildDemoSpaces(); this._demoRooms=built.rooms; this._demoEvents=built.eventsByRoom; this.saveDemo(); }
     this.demo=true; this.curWs=null;
-    this.setState({connected:true,demo:true,connecting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
+    this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,loginPass:'',cur:0,view:'crm'}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,loginPass:'',cur:0,view:'crm'}); }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -592,6 +640,9 @@ class Component extends DCLogic {
       onAddNote:()=>this.addNote(),
       onNoteKey:(e)=>{if(e.key==='Enter'){e.preventDefault(); this.addNote();}},
       connected:S.connected, notConnected:!S.connected,
+      // Login form shows only when signed out AND not mid-resume; the resuming
+      // overlay covers the cold-boot window so a duplicate login can't be fired.
+      showLogin:(!S.connected&&!S.booting), booting:(S.booting&&!S.connected),
       loginHs:S.loginHs, loginUser:S.loginUser, loginPass:S.loginPass, loginErr:S.loginErr, hasLoginErr:!!S.loginErr,
       onLoginHs:(e)=>this.setState({loginHs:e.target.value}), onLoginUser:(e)=>this.setState({loginUser:e.target.value}), onLoginPass:(e)=>this.setState({loginPass:e.target.value}),
       onConnect:()=>this.connect(), onLoginKey:(e)=>{if(e.key==='Enter'){e.preventDefault();this.connect();}},
