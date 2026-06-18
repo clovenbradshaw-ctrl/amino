@@ -56,6 +56,9 @@ const html = `<!doctype html>
 <!-- Pure fold engine (window.MatrixEngine) + computed fields + Ask-your-data bridge -->
 <script src="engine.js"></script>
 <script src="formula.js"></script>
+<!-- Materializes lazily-stored import set rows (window.AminoRows) so AMINO can
+     project the data bare-metal imported (clients/cases/notes) into its CRM. -->
+<script src="import-rows.js"></script>
 <script src="data-chat.js"></script>
 <!-- Design-component runtime: binds the <x-dc> template to the Component view-model -->
 <script src="dc-runtime.js"></script>

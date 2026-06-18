@@ -9755,13 +9755,27 @@
 
     <nav class="am-sc" style="flex:1;overflow-y:auto;padding:8px 9px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8F95A0;font-weight:700;padding:6px 8px 8px">Workspace</div>
-      <sc-for list="{{ workspaceNav }}" as="n" hint-placeholder-count="2">
-        <button onclick="{{ n.onPick }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:none;border-radius:8px;background:{{ n.bg }};color:{{ n.color }};font-size:12.5px;font-weight:{{ n.weight }};cursor:pointer;text-align:left;margin-bottom:1px">
-          <i class="ph{{ n.iw }} ph-{{ n.icon }}" style="font-size:16px;color:{{ n.icolor }}"></i><span style="flex:1">{{ n.name }}</span>
-          <span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ n.count }}</span>
-          <sc-if value="{{ n.hasCaret }}" hint-placeholder-val="{{ false }}"><i class="ph ph-caret-right" style="font-size:11px;color:#C9CDD3"></i></sc-if>
+      <!-- Space picker: the current space + a dropdown of the others (kept out of
+           sight until opened, instead of always listing every space). -->
+      <div style="position:relative">
+        <button onclick="{{ onToggleSpacePicker }}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:1px solid #E7EAEE;border-radius:8px;background:#fff;color:#18202D;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left;margin-bottom:3px">
+          <i class="ph-bold ph-identification-card" style="font-size:16px;color:#C2872B"></i>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ curSpaceName }}</span>
+          <i class="ph ph-caret-down" style="font-size:12px;color:#A9AEB6"></i>
         </button>
-      </sc-for>
+        <sc-if value="{{ spacePickerOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #E7EAEE;border-radius:8px;background:#fff;box-shadow:0 14px 30px -14px rgba(16,24,40,.35);overflow:hidden;margin-bottom:5px">
+            <button onclick="{{ onBackToSpaces }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;border-bottom:1px solid #F1F3F5;background:transparent;color:#46505B;font-size:12px;font-weight:600;cursor:pointer;text-align:left"><i class="ph ph-squares-four" style="font-size:15px;color:#8F95A0"></i> All spaces…</button>
+            <sc-for list="{{ spaceList }}" as="s" hint-placeholder-count="2">
+              <button onclick="{{ s.onPick }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;background:{{ s.bg }};color:{{ s.color }};font-size:12.5px;font-weight:{{ s.weight }};cursor:pointer;text-align:left"><i class="ph ph-identification-card" style="font-size:15px;color:{{ s.icolor }}"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ s.count }}</span></button>
+            </sc-for>
+            <button onclick="{{ onNewSpacePrompt }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;border-top:1px solid #F1F3F5;background:transparent;color:#0F7048;font-size:12px;font-weight:700;cursor:pointer;text-align:left"><i class="ph ph-plus" style="font-size:14px"></i> New workspace</button>
+          </div>
+        </sc-if>
+      </div>
+      <button onclick="{{ onOpenDb }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:none;border-radius:8px;background:{{ dbNavBg }};color:{{ dbNavColor }};font-size:12.5px;font-weight:{{ dbNavWeight }};cursor:pointer;text-align:left;margin-bottom:1px">
+        <i class="ph{{ dbNavIw }} ph-database" style="font-size:16px;color:{{ dbNavIcolor }}"></i><span style="flex:1">Database</span><span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ clientCount }}</span>
+      </button>
 
       <sc-if value="{{ isCrm }}" hint-placeholder-val="{{ true }}">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8F95A0;font-weight:700;padding:15px 8px 6px;display:flex;align-items:center;gap:8px">Record layouts <span style="flex:1"></span><i class="ph ph-folder-simple-plus" style="color:#B6BBC2;cursor:pointer;font-size:14px" title="New folder"></i><i class="ph ph-plus" style="color:#B6BBC2;cursor:pointer;font-size:13px" title="New layout"></i></div>

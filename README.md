@@ -75,8 +75,20 @@ automatically via the `predev`/`prebuild` hooks. **Edit the `ui/*` sources, not
 `index.html`.**
 
 To point the app at a homeserver other than the hardcoded one (e.g. a local dev
-Synapse), change `HOMESERVER` in `ui/amino-app.js`. The event namespace is
-`app.aminoimmigration` (set in `ui/amino-app.js` and `src/main.js`).
+Synapse), change `HOMESERVER` in `ui/amino-app.js`.
+
+**Namespaces.** Live data is written by the foundation bridge under
+`io.matrix-events` (`NAMESPACE` in `src/main.js`, exposed as
+`MatrixLive.NAMESPACE`), so amino folds live rooms under *that* namespace — this
+is what lets it read the data already imported via the bare-metal app. Demo seed
+spaces use `app.aminoimmigration`. The fold engine's namespace is aligned to the
+active source before every fold (`applyEngineNS` in `ui/amino-app.js`).
+
+**Imported sets → CRM.** Bulk Airtable/CSV imports are stored as a derived
+"set" (schema + one source blob, rows materialized on read), not per-row events.
+`public/import-rows.js` reconstructs those rows; amino projects the firm's
+**Client Info** set into the client list / record panel / Database view
+(`projectLive` / `materializeLive` in `ui/amino-app.js`).
 
 ## Deploy
 
