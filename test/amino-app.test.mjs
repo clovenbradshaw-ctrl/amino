@@ -222,6 +222,60 @@ v8.onDbMore();
 v8 = c8.renderVals();
 ok(v8.dbRows.length === Math.min(250, c8.DB_PAGE + 300), 'windowing: Load more grows the window');
 
+// 8b) Column layout — Airtable/Softr fidelity. The grid leads with the table's
+// PRIMARY field, shown once (no synthetic-"Name" + real-"Name" duplicate), and a
+// wide imported base is capped with an honest "+N more fields" expander.
+const mkDb = (table, events) => {
+  const cc = new Component({});
+  const st = ME.fold(events);
+  cc.curWs = '!ws1'; cc.workspaces = [{ roomId: '!ws1', name: 'W' }];
+  cc.state.connected = true; cc.state.view = 'db'; cc.state.dbTable = table;
+  cc._liveState = st; cc._renderState = st;
+  return cc;
+};
+const L1 = ME.makeAnchor('lead', { i: 1 }, '@a', 1);
+const cLead = mkDb('lead', [
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['lead'] }),
+  ev(ME.OP.INS, { anchor: L1, entity_type: 'lead', payload: {} }),
+  ev(ME.OP.DEF, { anchor: L1, path: 'Name', value: 'Acme Corp' }),
+  ev(ME.OP.DEF, { anchor: L1, path: 'Email', value: 'a@x.com' }),
+  ev(ME.OP.DEF, { anchor: L1, path: 'Stage', value: 'New' }),
+]);
+let vLead = cLead.renderVals();
+ok(vLead.dbColumns.filter((col) => col.name === 'Name').length === 1, 'columns: a literal "Name" field is not duplicated by the synthetic primary');
+ok(vLead.dbColumns[0].name === 'Name', 'columns: the primary field leads the grid');
+ok(vLead.dbRows[0].cells[0].isPrimary && vLead.dbRows[0].cells[0].text === 'Acme Corp', 'columns: the primary cell shows the primary field value');
+
+// Wide table (40 data fields + a "Title" primary) → capped at 30 + expander.
+const W1 = ME.makeAnchor('wide', { i: 1 }, '@a', 1);
+const wideEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['wide'] }),
+  ev(ME.OP.INS, { anchor: W1, entity_type: 'wide', payload: {} }),
+  ev(ME.OP.DEF, { anchor: W1, path: 'Title', value: 'Row one' }) ];
+for (let i = 0; i < 40; i++) wideEvents.push(ev(ME.OP.DEF, { anchor: W1, path: 'f' + String(i).padStart(2, '0'), value: 'v' + i }));
+const cWide = mkDb('wide', wideEvents);
+let vWide = cWide.renderVals();
+ok(vWide.dbColumns[0].name === 'Title', 'wide: the "Title" primary leads the grid');
+ok(vWide.dbColumns.length === 31, 'wide: 40 data fields are capped to 30 (+ primary) by default');
+ok(vWide.dbHasHiddenCols === true && vWide.dbHiddenCols === 10, 'wide: the hidden-field count is surfaced honestly');
+vWide.onDbShowAllCols();
+vWide = cWide.renderVals();
+ok(vWide.dbColumns.length === 41 && vWide.dbHasHiddenCols === false, 'wide: "show all fields" expands to every column');
+ok(vWide.dbCanCollapseCols === true, 'wide: a collapse control is offered once expanded');
+
+// Empty columns sink below populated ones, regardless of schema order.
+const E0 = ME.makeAnchor('rec', { i: 0 }, '@a', 0), E1 = ME.makeAnchor('rec', { i: 1 }, '@a', 1);
+const cEmpty = mkDb('rec', [
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['rec'] }),
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.fields.rec', value: [{ name: 'Aaa Empty', type: 'text' }, { name: 'Zzz Filled', type: 'text' }] }),
+  ev(ME.OP.INS, { anchor: E0, entity_type: 'rec', payload: {} }),
+  ev(ME.OP.DEF, { anchor: E0, path: 'Zzz Filled', value: 'has 0' }),
+  ev(ME.OP.INS, { anchor: E1, entity_type: 'rec', payload: {} }),
+  ev(ME.OP.DEF, { anchor: E1, path: 'Zzz Filled', value: 'has 1' }),
+]);
+const vEmpty = cEmpty.renderVals();
+ok(vEmpty.dbColumns[1] && vEmpty.dbColumns[1].name === 'Zzz Filled', 'ordering: a populated column leads an empty one regardless of schema order');
+ok(vEmpty.dbColumns[vEmpty.dbColumns.length - 1].name === 'Aaa Empty', 'ordering: an always-empty column sinks to the end');
+
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
 c9.ML = () => ({
