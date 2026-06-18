@@ -260,6 +260,17 @@ function fold(events) {
   return events.reduce(dispatch, initial());
 }
 
+// Incremental fold: apply only NEW events onto an already-folded state.
+// `dispatch` reduces in array order (no re-sort), so when the event buffer has
+// only grown at the tail, folding just the new events onto the prior state is
+// identical to re-folding the whole log — O(new) instead of O(all). The caller
+// is responsible for falling back to a full `fold` whenever the buffer was
+// reordered or back-filled (an earlier event arrived late), since that would
+// otherwise be applied out of order.
+function foldFrom(state, events) {
+  return events.reduce(dispatch, state);
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Seed data — task-tracker style, two rooms
 // ─────────────────────────────────────────────────────────────────────────
@@ -388,6 +399,6 @@ window.MatrixEngine = {
   OP, STORED_OPS, ALL_OPS,
   setNamespace, eventType, parseEventType,
   cyrb53, makeAnchor,
-  initial, fold, dispatch,
+  initial, fold, foldFrom, dispatch,
   seedData,
 };

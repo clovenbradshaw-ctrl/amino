@@ -80,10 +80,25 @@ class Component extends DCLogic {
     // the DOM.
     this._importRows={}; this._importInFlight=new Set(); this._liveState=null;
     this.CLIENT_SET_RE=/client\s*info/i; this.MAX_CLIENTS=4000;
+    // ── Lean steady-state: fold once, then stay still until a NEW event lands ──
+    // Per-room folded-state cache. After the first fold of a room we apply only
+    // the events appended since (foldRoom), so an idle app does no fold work and
+    // an edit folds O(1) instead of re-folding the whole timeline. _renderVer
+    // bumps whenever the projected render-state changes, so the Database grid can
+    // memoize its (expensive) table build and skip it on idle re-renders.
+    this._foldCache={}; this._renderVer=0; this._importRowsVer=0; this._builtCache=null;
+    this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig='';
+    // Database grid windowing — render only a bounded slice of rows into the DOM
+    // (grows on scroll / "Load more"), so a 12k-row imported sheet can't explode
+    // the DOM and crash the tab. DB_PAGE is the initial + per-step row count.
+    this.DB_PAGE=100; this._dbHasMore=false; this._scrollHooked=false;
+    this._onAnyScroll=this._onAnyScroll.bind(this);
+    // Sync & storage page — periodic snapshot of the bridge's sync/storage state.
+    this._syncTimer=null; this._preSyncView=null;
     // dbTable:'' / dbView:{} — the Database view is now set-driven (dbModel),
     // not the old fixed three-table map. booting — the cold-boot resume flag
     // from PR #32's duplicate-login fix. Both kept.
-    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
+    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, syncSnap:null, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
       connected:false, connecting:false, booting:false, wsSyncing:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live changes, and adopt a restored
@@ -130,7 +145,7 @@ class Component extends DCLogic {
   // The foundation bridge fired a change: a cold-boot resume settled, a room
   // updated, or the session ended. Keep the UI in step with it.
   onLiveChange(){
-    if(this.demo){ this.refold(); return; }
+    if(this.demo){ this.scheduleRefold(); return; }
     const ML=this.ML();
     // Resume settled — drop the "resuming" screen so the adopted session (or
     // the login form, if there was nothing to resume) can take over.
@@ -170,6 +185,7 @@ class Component extends DCLogic {
   async exploreDemo(){
     try{ await this.whenLive(); }catch(e){}
     try{ this.ME().setNamespace(this.NS); }catch(e){}
+    this._resetFoldCaches();
     const saved=this.loadDemo();
     if(saved&&Array.isArray(saved.rooms)&&saved.rooms.length){ this._demoRooms=saved.rooms; this._demoEvents=saved.eventsByRoom||{}; }
     else { const built=this.buildDemoSpaces(); this._demoRooms=built.rooms; this._demoEvents=built.eventsByRoom; this.saveDemo(); }
@@ -177,7 +193,10 @@ class Component extends DCLogic {
     this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } if(this._syncTimer){ clearTimeout(this._syncTimer); this._syncTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this._resetFoldCaches(); this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm',syncSnap:null}); }
+  // Drop every cached fold + projection so a new session never reads a prior
+  // session's (or a different namespace's) state. Cheap; the next fold rebuilds.
+  _resetFoldCaches(){ this._foldCache={}; this._builtCache=null; this._liveState=null; this._renderState=null; this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig=''; this._renderVer++; this._importRows={}; this._importRowsVer++; }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -334,12 +353,26 @@ class Component extends DCLogic {
 
   // state = fold(timeline). Rebuild the projected client list from the current
   // workspace's events; never hold a second source of truth beside the fold.
+  //
+  // "Initialized, then still": the fold is cached per room (foldRoom), so once a
+  // room is folded the app does NO fold work until a new event arrives. When the
+  // current room hasn't changed (and the workspace list hasn't), refold returns
+  // immediately without rebuilding the projection or re-rendering — the steady
+  // state is genuinely idle. Only a real change (a new event, a new workspace, a
+  // freshly materialized import blob) rebuilds and re-renders.
   refold(){
     if(!this.curWs||!window.MatrixEngine||!window.MatrixLive){ this.forceUpdate(); return; }
     try{
       this.applyEngineNS();
-      const events=this.eventsFor(this.curWs);
-      const state=this.ME().fold(events);
+      const state=this.foldRoom(this.curWs);
+      const ver=(this._foldCache[this.curWs]||{}).ver||0;
+      const wsSig=this.workspaces.map(w=>w.roomId).join('|');
+      // Nothing changed since the last render → stay still (no rebuild, no setState).
+      // Only short-circuit on the heavy record/grid views; the spaces launchpad
+      // re-derives per-workspace counts each render, so let it through.
+      const heavy=this.state.view==='crm'||this.state.view==='db';
+      if(heavy&&this._renderState&&this._renderedRoom===this.curWs&&this._renderedVer===ver&&this._renderedWsSig===wsSig) return;
+      this._renderedRoom=this.curWs; this._renderedVer=ver; this._renderedWsSig=wsSig;
       this._liveState=state;
       // The state the Database grid + CRM both read: live = fold + materialized
       // import rows (+ link edges) via window.AminoDB.augmentState; demo = the
@@ -348,11 +381,54 @@ class Component extends DCLogic {
       this._renderState=(window.AminoDB&&!this.demo)
         ? window.AminoDB.augmentState(state,this._importRows,window.AminoDB.activeImportAnchors(state))
         : state;
+      this._renderVer++;
       this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
       if(!this.demo) this.materializeLive(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
       this.setState({cur,vals:{},extraNotes:{}});
     }catch(e){ this.forceUpdate(); }
+  }
+  // Coalesce a burst of change notifications into a single refold on the next
+  // frame, so a flurry of sync events (or fast typing in the demo) folds + renders
+  // once rather than N times. Falls back to a microtask when rAF is unavailable.
+  scheduleRefold(){
+    if(this._refoldQueued) return;
+    this._refoldQueued=true;
+    const run=()=>{ this._refoldQueued=false; this.refold(); };
+    if(typeof requestAnimationFrame==='function') requestAnimationFrame(run);
+    else setTimeout(run,16);
+  }
+  // The namespace the engine folds under for a room's events (demo seed vs the
+  // live bridge namespace). Part of the fold-cache key so a namespace switch
+  // never serves a stale fold.
+  _engineNS(){ return this.demo?this.NS:this.liveNS(); }
+  // Cached / incremental fold for one room. Returns the folded state, reusing the
+  // cache when the event buffer is unchanged, and folding ONLY the appended tail
+  // when it has grown (same prefix). Any reorder / back-fill (the prefix changed,
+  // e.g. a late-decrypted older event) falls back to a correct full fold. `ver`
+  // increments on every real fold so callers can detect "did anything change?".
+  foldRoom(roomId){
+    const ME=this.ME();
+    if(!roomId||!ME||!ME.fold) return {entities:{},connections:[],schema:{},partitions:{},frames:[]};
+    const evid=(e)=>(e&&(e.event_id||e.id))||'';
+    const events=this.eventsFor(roomId)||[];
+    const n=events.length, ns=this._engineNS();
+    const lastId=n?evid(events[n-1]):'';
+    const cache=this._foldCache[roomId];
+    // Unchanged buffer → return the cached fold untouched (no work at all).
+    if(cache&&cache.ns===ns&&cache.len===n&&cache.lastId===lastId) return cache.state;
+    // Append-only growth (prefix intact) → fold only the new tail onto the cache.
+    if(cache&&cache.ns===ns&&n>cache.len&&evid(events[cache.len-1])===cache.boundaryId){
+      const tail=events.slice(cache.len);
+      const state=ME.foldFrom?ME.foldFrom(cache.state,tail):tail.reduce(ME.dispatch,cache.state);
+      cache.state=state; cache.len=n; cache.lastId=lastId; cache.boundaryId=lastId; cache.ver=(cache.ver||0)+1;
+      return state;
+    }
+    // First fold, or the buffer changed shape (reorder / back-fill / replaced) →
+    // fold the whole thing from scratch and (re)seed the cache.
+    const state=ME.fold(events);
+    this._foldCache[roomId]={ state, len:n, lastId, boundaryId:lastId, ns, ver:((cache&&cache.ns===ns?cache.ver:0)||0)+1 };
+    return state;
   }
   // Set names whose rows are amino "clients" — the firm's "Client Info" set
   // (declared in the room schema or named by an import).
@@ -387,12 +463,13 @@ class Component extends DCLogic {
     if(!missing.length) return;
     missing.forEach(imp=>{
       this._importInFlight.add(imp._anchor);
-      Promise.resolve(AR.materializeImportRows(imp)).then(rows=>{ if(Array.isArray(rows)) this._importRows[imp._anchor]=rows; })
+      Promise.resolve(AR.materializeImportRows(imp)).then(rows=>{ if(Array.isArray(rows)){ this._importRows[imp._anchor]=rows; this._importRowsVer++; } })
         .catch(()=>{})
         .then(()=>{
           this._importInFlight.delete(imp._anchor);
           const st=this._liveState||state;
           this._renderState=DB.augmentState(st,this._importRows,DB.activeImportAnchors(st));
+          this._renderVer++;
           this.clients=this.projectLive(st);
           let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
           this.setState({cur});
@@ -423,7 +500,7 @@ class Component extends DCLogic {
       const anchor=await this.emitOp(room, ME.OP.INS, { entity_type:'client', payload:{} });
       if(first)  await this.emitOp(room, ME.OP.DEF, { anchor, path:'First Name',  value:first });
       if(family) await this.emitOp(room, ME.OP.DEF, { anchor, path:'Family Name', value:family });
-      this.refold();
+      this.scheduleRefold();
     }catch(e){ this.toast('Could not add client: '+((e&&e.message)||e)); }
   }
   // A case note is an INS('note') carrying the client anchor — one stored operator.
@@ -432,7 +509,7 @@ class Component extends DCLogic {
     const ci=this.state.cur, c=this.clients[ci];
     if(!c||!c.anchor||!this.curWs){ this.setState({noteDraft:''}); return; }
     try{ await this.emitOp(this.curWs, this.ME().OP.INS, { entity_type:'note', payload:{ client:c.anchor, text:t, type:'Note', date:'just now' } }); }catch(e){}
-    this.setState(s=>({extraNotes:Object.assign({},s.extraNotes,{[ci]:[t].concat(s.extraNotes[ci]||[])}),noteDraft:''})); this.refold(); }
+    this.setState(s=>({extraNotes:Object.assign({},s.extraNotes,{[ci]:[t].concat(s.extraNotes[ci]||[])}),noteDraft:''})); this.scheduleRefold(); }
 
   layoutVM(id){
     const S=this.state, on=S.layout===id, m=this.LMETA[id], fav=S.favs.includes(id);
@@ -447,7 +524,7 @@ class Component extends DCLogic {
   label(k){ return {'A#':'A#','Client_Photo':'Client Photo','PP':'Practice Panther','box_shared_link':'box link','USCIS FOIA':'USCIS FOIA','Client Name':'Client Name'}[k]||k; }
   age(mdy){ const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(mdy||''); if(!m)return '—'; const d=new Date(+m[3],+m[1]-1,+m[2]); const n=new Date(2026,5,13); let a=n.getFullYear()-d.getFullYear(); if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--; return String(a); }
   rawVal(ci,k){ const S=this.state, ov=S.vals[ci+'::'+k]; if(ov!==undefined)return ov; const c=this.clients[ci]; if(!c)return ''; if(k==='Age')return this.age(c.f['DOB']); if(k==='Client Name')return (c.f['Family Name']||'')+', '+(c.f['First Name']||''); return c.f[k]; }
-  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ await this.emitOp(this.curWs, this.ME().OP.DEF, { anchor:c.anchor, path:k, value:v }); if(this.demo) this.refold(); }catch(e){} }
+  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ await this.emitOp(this.curWs, this.ME().OP.DEF, { anchor:c.anchor, path:k, value:v }); if(this.demo) this.scheduleRefold(); }catch(e){} }
   curLayout(){ return this.state.layouts[this.state.layout]; }
   mutate(fn){ this.setState(s=>{ const L=JSON.parse(JSON.stringify(s.layouts)); fn(L[s.layout]); return {layouts:L}; }); }
 
@@ -546,12 +623,29 @@ class Component extends DCLogic {
     if(fam||first) return (fam||'')+(fam&&first?', ':'')+(first||'');
     return String(e._anchor||'').slice(-8)||'—'; }
 
+  // ── Database grid windowing plumbing ──
+  // One capture-phase scroll listener on the document catches the grid scroll
+  // container (marked data-am-grid) wherever React re-mounts it, with no per-row
+  // listeners. When the user nears the bottom and more rows exist, grow the
+  // window by a page — infinite scroll that keeps the DOM bounded.
+  _ensureScrollHook(){ if(this._scrollHooked||typeof document==='undefined') return; this._scrollHooked=true; try{ document.addEventListener('scroll',this._onAnyScroll,true); }catch(e){} }
+  _onAnyScroll(e){
+    const el=e&&e.target;
+    if(!el||!el.getAttribute||el.getAttribute('data-am-grid')===null) return;
+    if(!this._dbHasMore) return;
+    if(el.scrollHeight-el.scrollTop-el.clientHeight>320) return; // not near the bottom yet
+    if(this._dbGrowQueued) return; this._dbGrowQueued=true;
+    const grow=()=>{ this._dbGrowQueued=false; if(this._dbHasMore) this.setState(st=>({dbLimit:(st.dbLimit||this.DB_PAGE)+300})); };
+    if(typeof requestAnimationFrame==='function') requestAnimationFrame(grow); else setTimeout(grow,16);
+  }
+  _scrollGridTop(){ if(typeof document==='undefined') return; try{ const el=document.querySelector('[data-am-grid]'); if(el) el.scrollTop=0; }catch(e){} }
+
   // The whole Database view-model: tabs, columns, rows, the views rail, and the
   // record drawer — all from the real fold/augmented state. Returns exactly the
   // db* / onDb* bindings the template consumes.
   dbModel(){
     const S=this.state, DB=window.AminoDB;
-    const state=this._renderState || (this.curWs?this.ME().fold(this.eventsFor(this.curWs)):{entities:{},connections:[],schema:{},partitions:{}});
+    const state=this._renderState || (this.curWs?this.foldRoom(this.curWs):{entities:{},connections:[],schema:{},partitions:{}});
     const empty={dbName:'Database',dbCount:'0',dbFieldCount:0,dbTabs:[],dbColumns:[],dbColTemplate:'1fr',dbRows:[],
       dbSearch:S.dbSearch,onDbSearch:(e)=>this.setState({dbSearch:e.target.value}),
       dbViewSearch:S.dbViewSearch,onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
@@ -562,26 +656,50 @@ class Component extends DCLogic {
     // O(rows) buildTable/cell mapping entirely on every other view — otherwise a
     // 12k-row imported sheet would be re-projected on each CRM keystroke.
     if(!DB || S.view!=='db') return empty;
+    this._ensureScrollHook();
     const sets=DB.listSets(this._liveState||state, state);
     let activeName=S.dbTable; if(!sets.some(s=>s.name===activeName)) activeName=(sets[0]&&sets[0].name)||'';
     if(!activeName) return empty;
     const tabs=sets.map(s=>{ const on=s.name===activeName; return {name:s.name,icon:this.iconForSet(s.name),count:String(s.expected||s.localRows||0),
       bg:on?'#fff':'transparent',underline:on?'#C2872B':'transparent',color:on?'#18202D':'#6B7682',weight:on?'700':'500',icolor:on?'#C2872B':'#9aa3ad',
-      onPick:()=>this.setState({dbTable:s.name,dbSearch:'',dbRecord:null})}; });
-    const built=DB.buildTable(activeName,state), cols=built.cols, rows=built.rows;
+      onPick:()=>{ this._scrollGridTop(); this.setState({dbTable:s.name,dbSearch:'',dbRecord:null,dbLimit:this.DB_PAGE}); }}; });
+    // Building the full table (every row materialized from the augmented state)
+    // is the costly part, so memoize it: it only changes when the render-state or
+    // the raw fold changes, NOT when the user types in search or scrolls. Keyed
+    // on those versions so search/scroll re-renders reuse it instead of rebuilding
+    // a 12k-row table on every keystroke.
+    const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
+    let built;
+    if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
+    else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
+    const cols=built.cols, rows=built.rows;
     const MAXCOLS=12, shown=cols.slice(0,MAXCOLS);
     const columns=[{k:'__name',n:'Name',icon:'text-aa',type:'name'}].concat(shown.map(c=>({k:c.name,n:c.name,icon:this.iconForType(c.type),type:c.type})));
     const dq=S.dbSearch.trim().toLowerCase();
     const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
-    const dbRows=rows.filter(match).map(e=>{ const label=this.rowLabel(e); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
+    // Window the rows: only a bounded slice is turned into cell view-models and
+    // rendered into the DOM, so a huge sheet can't create tens of thousands of
+    // nodes and freeze/crash the tab. The window grows on scroll-to-bottom and via
+    // the "Load more" control (dbLimit), and resets when the table or search change.
+    const filtered=rows.filter(match), total=filtered.length;
+    const limit=Math.min(Math.max(this.DB_PAGE, S.dbLimit||this.DB_PAGE), total);
+    const windowRows=total>limit?filtered.slice(0,limit):filtered;
+    this._dbHasMore=total>windowRows.length;
+    const dbRows=windowRows.map(e=>{ const label=this.rowLabel(e); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
+    const moreCount=Math.min(300,total-windowRows.length);
     const dbColTemplate=columns.map((c,i)=> i===0?'minmax(210px,1.4fr)':((c.type==='longtext'||c.type==='json')?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
     const active=sets.find(s=>s.name===activeName)||{};
-    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(dbRows.length),onPick:()=>{}}]
+    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({
-      dbName:activeName, dbCount:String(active.expected||active.localRows||dbRows.length), dbFieldCount:cols.length,
+      dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:cols.length,
       dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows,
-      dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value}),
+      // Windowing: show how many of how many, and a control to load the next page.
+      dbHasMore:this._dbHasMore, dbShown:windowRows.length, dbTotal:total,
+      dbMoreText:'Showing '+windowRows.length+' of '+total+' — load '+moreCount+' more',
+      dbCountText:total>windowRows.length?(windowRows.length+' of '+total):String(total),
+      onDbMore:()=>this.setState(st=>({dbLimit:(st.dbLimit||this.DB_PAGE)+300})),
+      dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value,dbLimit:this.DB_PAGE}),
       dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
       dbViews:views, dbViewName:'All records', dbViewIcon:'table',
       dbTools:[{icon:'eye-slash',label:'Hide fields'},{icon:'funnel-simple',label:'Filter'},{icon:'arrows-down-up',label:'Sort'},{icon:'rows',label:'Group'}],
@@ -624,9 +742,75 @@ class Component extends DCLogic {
       onCloseDbRecord:()=>this.setState({dbRecord:null})};
   }
 
+  // ── Sync & storage page ───────────────────────────────────────────────────
+  // "A place to see the sync." Surfaces the bridge's already-tracked state — the
+  // initial-sync progress (durable block chain → OPFS), edits still queued to
+  // send, and where the local encrypted copy actually lives on disk (OPFS room
+  // logs / checkpoints / media + the service-worker cache). All read from
+  // window.MatrixLive; nothing here writes. Every probe is guarded, so a missing
+  // bridge method (or demo mode) just shows "—" rather than throwing.
+  openSync(){ if(this.state.view!=='sync') this._preSyncView=this.state.view; this.setState({view:'sync',spacePickerOpen:false,dbRecord:null}); this.refreshSync(); this._armSyncTimer(); }
+  backFromSync(){ if(this._syncTimer){ clearTimeout(this._syncTimer); this._syncTimer=null; } this.setState({view:this._preSyncView||(this.curWs?'crm':'spaces')}); }
+  _armSyncTimer(){ if(this._syncTimer||typeof setTimeout==='undefined') return; const tick=()=>{ this._syncTimer=null; if(this.state.view!=='sync') return; this.refreshSync(); this._syncTimer=setTimeout(tick,3000); }; this._syncTimer=setTimeout(tick,3000); }
+  async refreshSync(){
+    const ML=this.ML&&this.ML(); const snap={at:Date.now(),demo:!!this.demo};
+    const get=async(fn)=>{ try{ return fn?await fn():null; }catch(e){ return null; } };
+    snap.sync      = await get(ML&&ML.getSyncStatus);
+    snap.net       = await get(ML&&ML.getNetwork);
+    snap.syncState = await get(ML&&ML.getSyncState);
+    snap.pending   = await get(ML&&ML.getPendingCount);
+    snap.mem       = await get(ML&&ML.getMemoryStats);
+    snap.log       = await get(ML&&ML.getProgressLog);
+    snap.storage   = await get(ML&&ML.getStorageStatus);
+    this.setState({syncSnap:snap});
+  }
+  async makeDurable(){ const ML=this.ML&&this.ML(); try{ if(ML&&ML.requestPersistentStorage) await ML.requestPersistentStorage(); }catch(e){} this.refreshSync(); }
+  async resyncNow(){ const ML=this.ML&&this.ML(); try{ if(ML&&ML.resync) await ML.resync(); }catch(e){} this.refreshSync(); }
+  fmtBytes(n){ n=+n||0; if(n<1024) return n+' B'; const u=['KB','MB','GB','TB']; let i=-1; do{ n/=1024; i++; }while(n>=1024&&i<u.length-1); return (n>=10?Math.round(n):n.toFixed(1))+' '+u[i]; }
+  syncModel(){
+    const snap=this.state.syncSnap, s=(snap&&snap.sync)||{}, st=(snap&&snap.storage)||{};
+    const phase=s.phase||(this.demo?'demo':'idle');
+    const PH={idle:['Idle','#5A5D63','#F0F2F4'],syncing:['Syncing…','#8A5A14','#FBF3E2'],done:['Up to date','#0F7048','#EAF6F0'],error:['Sync error','#B42318','#FCEFEF'],demo:['Demo data','#7A3FB0','#F1E9FE']};
+    const ph=PH[phase]||PH.idle;
+    const errors=(s.errors||[]).map(er=>({name:er.name||er.roomId||'room',message:er.message||'failed'}));
+    const opfs=st.opfs||{}, b=(k)=>opfs[k]||{};
+    const buckets=[
+      {label:'Room event logs',icon:'rows',bytes:this.fmtBytes(b('room').bytes),files:String(b('room').files||0)},
+      {label:'Checkpoints',icon:'camera',bytes:this.fmtBytes(b('checkpoint').bytes),files:String(b('checkpoint').files||0)},
+      {label:'Media / import blobs',icon:'images',bytes:this.fmtBytes(b('media').bytes),files:String(b('media').files||0)},
+      {label:'App-shell cache',icon:'browser',bytes:this.fmtBytes((st.caches||{}).bytes),files:String((st.caches||{}).entries==null?'—':(st.caches||{}).entries)},
+    ];
+    const quota=st.quota||0, usage=st.usage||0, pct=quota?Math.min(100,Math.round((usage/quota)*100)):0;
+    const pending=snap?(snap.pending|0):0;
+    const net=snap&&snap.net, online=net?(net.online!==false):true;
+    const mem=(snap&&snap.mem)||null;
+    return {
+      isSync:true, syncDemo:!!this.demo, syncUpdated: snap?new Date(snap.at).toLocaleTimeString():'—',
+      syncPhaseLabel:ph[0], syncPhaseColor:ph[1], syncPhaseBg:ph[2], syncIsSyncing:phase==='syncing',
+      syncRooms:(s.roomsTotal?(s.roomsDone+' / '+s.roomsTotal):'—'),
+      syncBlocks:(s.blocksTotal?(s.blocksDone+' / '+s.blocksTotal):'—'),
+      syncCurrentRoom:s.currentRoomName||s.currentRoomId||'—', syncRecovered:String(s.recovered||0),
+      syncErrors:errors, syncHasErrors:errors.length>0,
+      syncOnline:online, syncNetLabel:online?'Online':'Offline', syncNetColor:online?'#0F7048':'#B42318', syncNetBg:online?'#EAF6F0':'#FCEFEF',
+      syncState:snap&&snap.syncState?String(snap.syncState):'—',
+      syncPending:String(pending), syncHasPending:pending>0,
+      syncPendingNote:pending>0?(pending+' edit'+(pending===1?'':'s')+' queued to send'):'All edits sent · nothing waiting',
+      storageBuckets:buckets, storageMeasured:this.fmtBytes(st.measuredBytes||0),
+      storageQuota:quota?this.fmtBytes(quota):'—', storageUsage:quota?this.fmtBytes(usage):'—',
+      storagePct:pct, storagePctText:quota?(pct+'%'):'—',
+      storagePersisted:st.persisted===true, storageNotPinned:st.persisted!==true,
+      storageDurableLabel:st.persisted===true?'Pinned — survives a tab close':'Not pinned — the browser may evict the local cache',
+      storageDurableColor:st.persisted===true?'#0F7048':'#8A5A14', storageDurableBg:st.persisted===true?'#EAF6F0':'#FBF3E2',
+      storageIdb:(st.idbNames||[]).join(', ')||'—',
+      syncMem:mem?(this.fmtBytes(mem.used||mem.bytes||0)+(mem.budget?(' / '+this.fmtBytes(mem.budget)):'')):'—',
+      syncLog:((snap&&snap.log)||[]).slice(-14).reverse().map(l=>({msg:(l&&l.msg)||String(l)})),
+      onSyncRefresh:()=>this.refreshSync(), onResync:()=>this.resyncNow(), onMakeDurable:()=>this.makeDurable(), onBackFromSync:()=>this.backFromSync(),
+    };
+  }
+
   renderVals(){
     const S=this.state;
-    const isCrm=S.view==='crm', isDb=S.view==='db', isSpaces=S.view==='spaces';
+    const isCrm=S.view==='crm', isDb=S.view==='db', isSpaces=S.view==='spaces', isSync=S.view==='sync';
     // Spaces launchpad — what you land on after sign-in: a card per workspace
     // (each an encrypted room / demo space), folded just enough to show a count.
     const myLocal=(S.session&&S.session.userId)?String(S.session.userId).replace(/^@/,'').split(':')[0]:'';
@@ -636,7 +820,7 @@ class Component extends DCLogic {
       spaceCards=this.workspaces.map(w=>{
         let cnt='';
         try{
-          const st=this.ME().fold(this.eventsFor(w.roomId));
+          const st=this.foldRoom(w.roomId);
           let n=this.buildClients(st).length;
           // Imported "Client Info" rows live in blobs; count them from the
           // import entity's recorded total rather than folding 12k blob rows.
@@ -731,6 +915,7 @@ class Component extends DCLogic {
       workspaceNav:[{name:'All spaces',icon:'squares-four',iw:isSpaces?'-bold':'',icolor:isSpaces?'#C2872B':'#8F95A0',bg:isSpaces?'#FBF3E2':'transparent',color:isSpaces?'#8A5A14':'#46505B',weight:isSpaces?'700':'600',count:String(this.workspaces.length),hasCaret:false,onPick:()=>this.backToSpaces()}].concat(this.workspaces.map(w=>{const on=this.curWs===w.roomId&&isCrm;return {name:w.name,icon:'identification-card',iw:on?'-bold':'',icolor:on?'#C2872B':'#8F95A0',bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',count:w.roomId===this.curWs?String(this.clients.length):'',hasCaret:false,onPick:()=>this.selectWorkspace(w.roomId)};})).concat([
         {name:'New workspace',icon:'plus',iw:'',icolor:'#0F7048',bg:'transparent',color:'#0F7048',weight:'600',count:'',hasCaret:false,onPick:()=>this.createWorkspace()},
         {name:'Database',icon:'database',iw:isDb?'-bold':'',icolor:isDb?'#C2872B':'#8F95A0',bg:isDb?'#FBF3E2':'transparent',color:isDb?'#8A5A14':'#46505B',weight:isDb?'700':'500',count:String(this.clients.length),hasCaret:false,onPick:()=>this.setState({view:'db'})},
+        {name:'Sync & storage',icon:'cloud-arrow-down',iw:isSync?'-bold':'',icolor:isSync?'#C2872B':'#8F95A0',bg:isSync?'#FBF3E2':'transparent',color:isSync?'#8A5A14':'#46505B',weight:isSync?'700':'500',count:'',hasCaret:false,onPick:()=>this.openSync()},
       ]),
       hasFavs:S.favs.length>0,
       favLayouts:this.LORDER.filter(id=>S.favs.includes(id)).map(id=>this.layoutVM(id)),
@@ -755,8 +940,12 @@ class Component extends DCLogic {
       sessUser:(S.session&&S.session.userId)||'', sessHs:((S.session&&S.session.homeserver)||'').replace(/^https?:\/\//,''), onDisconnect:()=>this.disconnect(),
       meName:(S.session&&S.session.userId)?String(S.session.userId).replace(/^@/,'').split(':')[0]:'Not signed in',
       meSub:(S.session&&S.session.userId)?('signed in · '+(String(S.session.userId).split(':')[1]||this.HOMESERVER.replace(/^https?:\/\//,''))):'app.aminoimmigration.com',
+      // Spaces launchpad → a way into the Sync & storage page too.
+      onOpenSync:()=>this.openSync(),
       // Database view-model — tabs, columns, rows, views rail, record drawer.
       ...db,
+      // Sync & storage view-model (only computed when that page is open).
+      ...(isSync?this.syncModel():{isSync:false}),
     };
   }
 }

@@ -182,4 +182,62 @@ c6.selectWorkspace('!ws1');
 await Promise.resolve();
 ok(opened === '!ws1', 'selectWorkspace opens (loads+decrypts) the room before folding');
 
+// 7) cached / incremental fold — fold a room once, then only the appended
+// events extend it. An unchanged buffer must not re-fold; an append must fold
+// just the tail (ver bumps once per real change).
+ME.setNamespace('app.aminoimmigration');
+const c7 = new Component({});
+let buf = [];
+c7.ML = () => ({ ...authedBridge, getEventsForRoom: () => buf, NAMESPACE: 'app.aminoimmigration' });
+c7.demo = false; c7.curWs = '!ws1';
+const K = ME.makeAnchor('client', {}, '@a', 1);
+buf = [ ev(ME.OP.INS, { anchor: K, entity_type: 'client', payload: {} }),
+        ev(ME.OP.DEF, { anchor: K, path: 'Family Name', value: 'Vega' }) ];
+const s7 = c7.foldRoom('!ws1');
+ok(s7.entities[K] && s7.entities[K]['Family Name'] === 'Vega', 'foldRoom: initial fold builds the entity');
+const ver1 = c7._foldCache['!ws1'].ver;
+const s7b = c7.foldRoom('!ws1');
+ok(s7b === s7 && c7._foldCache['!ws1'].ver === ver1, 'foldRoom: unchanged buffer returns the cached fold (no re-fold)');
+buf = buf.concat([ ev(ME.OP.DEF, { anchor: K, path: 'Country', value: 'Mexico' }) ]);
+const s7c = c7.foldRoom('!ws1');
+ok(s7c.entities[K]['Country'] === 'Mexico' && c7._foldCache['!ws1'].ver === ver1 + 1, 'foldRoom: an appended event folds incrementally onto the cache');
+
+// 8) Database grid windows its rows — a large set renders only a bounded page
+// into the DOM (not all rows), and "Load more" grows the window.
+const c8 = new Component({});
+const bigEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['client'] }) ];
+for (let i = 0; i < 250; i++) {
+  const a = ME.makeAnchor('client', { i }, '@a', i);
+  bigEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'client', payload: {} }));
+  bigEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Family Name', value: 'Name' + i }));
+}
+const big = ME.fold(bigEvents);
+c8.curWs = '!ws1'; c8.workspaces = [{ roomId: '!ws1', name: 'W' }];
+c8.state.connected = true; c8.state.view = 'db'; c8.state.dbTable = 'client';
+c8._liveState = big; c8._renderState = big;
+let v8 = c8.renderVals();
+ok(v8.dbRows.length === c8.DB_PAGE, 'windowing: only a page of rows is rendered, not all 250');
+ok(v8.dbTotal === 250 && v8.dbHasMore === true, 'windowing: total row count + hasMore are reported');
+v8.onDbMore();
+v8 = c8.renderVals();
+ok(v8.dbRows.length === Math.min(250, c8.DB_PAGE + 300), 'windowing: Load more grows the window');
+
+// 9) Sync & storage page — renders the bridge's sync/storage snapshot.
+const c9 = new Component({});
+c9.ML = () => ({
+  getStorageStatus: async () => ({
+    opfs: { room: { bytes: 2048, files: 3 }, checkpoint: { bytes: 0, files: 0 }, media: { bytes: 1048576, files: 2 }, other: { bytes: 0, files: 0 }, totalBytes: 1050624 },
+    caches: { bytes: 4096, entries: 5 }, measuredBytes: 1054720, quota: 1000000000, usage: 1050624, persisted: false, idbNames: ['matrix-crypto'],
+  }),
+  getSyncStatus: () => ({ phase: 'syncing', roomsTotal: 3, roomsDone: 1, blocksTotal: 10, blocksDone: 4, recovered: 42, errors: [] }),
+  getPendingCount: () => 2, getNetwork: () => ({ online: true }), getProgressLog: () => [{ ts: 1, msg: 'opened workspace' }],
+});
+await c9.refreshSync();
+c9.state.view = 'sync';
+const v9 = c9.syncModel();
+ok(v9.syncPending === '2' && v9.syncHasPending === true, 'sync page: pending writes are surfaced');
+ok(v9.syncRooms === '1 / 3' && v9.syncBlocks === '4 / 10', 'sync page: initial-sync progress is surfaced');
+ok(v9.storageBuckets.length === 4 && /\d/.test(v9.storageMeasured), 'sync page: local OPFS/cache storage breakdown is surfaced');
+ok(v9.storageNotPinned === true, 'sync page: offers to pin storage when not yet persistent');
+
 console.log(`\namino-app.test: ${pass} assertions passed`);
