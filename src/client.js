@@ -198,17 +198,26 @@ function warmUpIndexedDB({ tries = 12, intervalMs = 250 } = {}) {
  * user. Avoids hitting the exception-based retry path inside
  * initCryptoWithRetry, which has worse timing characteristics.
  */
-async function ensureCryptoStoreOwner(userId) {
+async function ensureCryptoStoreOwner(userId, deviceId) {
   // Wake IndexedDB before any crypto-store access (delete below or the SDK's
   // own open in initRustCrypto). On Safari the first cold open can hang, which
   // is what stalls login until a manual refresh — see warmUpIndexedDB.
   await warmUpIndexedDB();
+  // Key the owner on user AND device. A fresh password login mints a NEW
+  // device_id, and the Rust crypto store from the PRIOR device can't be reused:
+  // initRustCrypto would throw "account in the store doesn't match", and the
+  // recovery delete inside initCryptoWithRetry runs AFTER the SDK has already
+  // opened the store — so deleteDatabase is blocked and login spins ("won't let
+  // me log in if I previously logged in"). Wiping HERE, before the SDK opens the
+  // store, makes the delete succeed and the new device initialise cleanly. A
+  // genuine resume reuses the same device, so the owner matches and keys survive.
+  const owner = deviceId ? `${userId}|${deviceId}` : userId;
   const prior = localStorage.getItem(CRYPTO_OWNER_KEY);
-  if (prior && prior !== userId) {
-    progress(`Crypto store belonged to ${prior}; resetting for ${userId}`);
+  if (prior && prior !== owner) {
+    progress(`Crypto store belonged to ${prior}; resetting for ${owner}`);
     await clearCryptoStore();
   }
-  localStorage.setItem(CRYPTO_OWNER_KEY, userId);
+  localStorage.setItem(CRYPTO_OWNER_KEY, owner);
 }
 
 function isCryptoStoreMismatch(err) {
@@ -745,7 +754,7 @@ export async function login(homeserver, username, password, { persist = false } 
     logger: QUIET_LOGGER,
   });
 
-  await ensureCryptoStoreOwner(resp.user_id);
+  await ensureCryptoStoreOwner(resp.user_id, resp.device_id);
   progress('Initializing encryption…');
   await initCryptoWithRetry(client);
 
@@ -935,7 +944,7 @@ export async function restoreSession(userId) {
     cryptoCallbacks: { getSecretStorageKey },
     logger: QUIET_LOGGER,
   });
-  await ensureCryptoStoreOwner(sid);
+  await ensureCryptoStoreOwner(sid, deviceId);
   progress('Restoring session…');
   try {
     await initCryptoWithRetry(client);

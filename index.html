@@ -9768,13 +9768,27 @@
 
     <nav class="am-sc" style="flex:1;overflow-y:auto;padding:8px 9px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8F95A0;font-weight:700;padding:6px 8px 8px">Workspace</div>
-      <sc-for list="{{ workspaceNav }}" as="n" hint-placeholder-count="2">
-        <button onclick="{{ n.onPick }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:none;border-radius:8px;background:{{ n.bg }};color:{{ n.color }};font-size:12.5px;font-weight:{{ n.weight }};cursor:pointer;text-align:left;margin-bottom:1px">
-          <i class="ph{{ n.iw }} ph-{{ n.icon }}" style="font-size:16px;color:{{ n.icolor }}"></i><span style="flex:1">{{ n.name }}</span>
-          <span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ n.count }}</span>
-          <sc-if value="{{ n.hasCaret }}" hint-placeholder-val="{{ false }}"><i class="ph ph-caret-right" style="font-size:11px;color:#C9CDD3"></i></sc-if>
+      <!-- Space picker: the current space + a dropdown of the others (kept out of
+           sight until opened, instead of always listing every space). -->
+      <div style="position:relative">
+        <button onclick="{{ onToggleSpacePicker }}" style="display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:1px solid #E7EAEE;border-radius:8px;background:#fff;color:#18202D;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left;margin-bottom:3px">
+          <i class="ph-bold ph-identification-card" style="font-size:16px;color:#C2872B"></i>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ curSpaceName }}</span>
+          <i class="ph ph-caret-down" style="font-size:12px;color:#A9AEB6"></i>
         </button>
-      </sc-for>
+        <sc-if value="{{ spacePickerOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid #E7EAEE;border-radius:8px;background:#fff;box-shadow:0 14px 30px -14px rgba(16,24,40,.35);overflow:hidden;margin-bottom:5px">
+            <button onclick="{{ onBackToSpaces }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;border-bottom:1px solid #F1F3F5;background:transparent;color:#46505B;font-size:12px;font-weight:600;cursor:pointer;text-align:left"><i class="ph ph-squares-four" style="font-size:15px;color:#8F95A0"></i> All spaces…</button>
+            <sc-for list="{{ spaceList }}" as="s" hint-placeholder-count="2">
+              <button onclick="{{ s.onPick }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;background:{{ s.bg }};color:{{ s.color }};font-size:12.5px;font-weight:{{ s.weight }};cursor:pointer;text-align:left"><i class="ph ph-identification-card" style="font-size:15px;color:{{ s.icolor }}"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.name }}</span><span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ s.count }}</span></button>
+            </sc-for>
+            <button onclick="{{ onNewSpacePrompt }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:8px 11px;border:none;border-top:1px solid #F1F3F5;background:transparent;color:#0F7048;font-size:12px;font-weight:700;cursor:pointer;text-align:left"><i class="ph ph-plus" style="font-size:14px"></i> New workspace</button>
+          </div>
+        </sc-if>
+      </div>
+      <button onclick="{{ onOpenDb }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:none;border-radius:8px;background:{{ dbNavBg }};color:{{ dbNavColor }};font-size:12.5px;font-weight:{{ dbNavWeight }};cursor:pointer;text-align:left;margin-bottom:1px">
+        <i class="ph{{ dbNavIw }} ph-database" style="font-size:16px;color:{{ dbNavIcolor }}"></i><span style="flex:1">Database</span><span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ clientCount }}</span>
+      </button>
 
       <sc-if value="{{ isCrm }}" hint-placeholder-val="{{ true }}">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8F95A0;font-weight:700;padding:15px 8px 6px;display:flex;align-items:center;gap:8px">Record layouts <span style="flex:1"></span><i class="ph ph-folder-simple-plus" style="color:#B6BBC2;cursor:pointer;font-size:14px" title="New folder"></i><i class="ph ph-plus" style="color:#B6BBC2;cursor:pointer;font-size:13px" title="New layout"></i></div>
@@ -10320,8 +10334,15 @@ class Component extends DCLogic {
     // store of immigration seed spaces, folded through the same pipeline as a
     // live homeserver. Nothing leaves the browser; edits persist to localStorage.
     this.demo=false; this._demoRooms=[]; this._demoEvents={}; this.DEMO_KEY='amino.demo.store.v1';
+    // Live imported-set materialization: the data bare-metal imported lives in
+    // encrypted blobs, reconstructed on read (window.AminoRows). We project the
+    // "Client Info" set's rows as AMINO clients. Cache per import anchor so a
+    // re-fold doesn't re-fetch; cap projected rows so a huge sheet can't freeze
+    // the DOM.
+    this._importRows={}; this._importInFlight=new Set(); this._liveState=null;
+    this.CLIENT_SET_RE=/client\s*info/i; this.MAX_CLIENTS=4000;
     this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'clientInfo', dbSearch:'', dbView:{clientInfo:'all',caseMaster:'all',caseNotes:'all'}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
-      connected:false, connecting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'' };
+      connected:false, connecting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live timeline changes, and resume a
     // restored session (the foundation auto-unlocks a prior login on cold start).
@@ -10374,6 +10395,14 @@ class Component extends DCLogic {
   saveDemo(){ if(!this.demo&&!this._demoRooms.length) return; try{ localStorage.setItem(this.DEMO_KEY, JSON.stringify({rooms:this._demoRooms,eventsByRoom:this._demoEvents})); }catch(e){} }
   // The events backing a room — demo store when offline, the live bridge cache otherwise.
   eventsFor(roomId){ if(this.demo) return this._demoEvents[roomId]||[]; try{ return (this.ML().getEventsForRoom&&this.ML().getEventsForRoom(roomId))||[]; }catch(e){ return []; } }
+  // The fold engine parses event types by namespace prefix, so it must use the
+  // SAME namespace the events were written under or it folds *nothing*. Live
+  // rooms are written by the foundation bridge under window.MatrixLive.NAMESPACE
+  // (io.matrix-events); demo seed data is built under this.NS. Align the engine
+  // to the active source before every fold — otherwise live rooms project 0
+  // records even though the data is right there.
+  liveNS(){ return (this.ML()&&this.ML().NAMESPACE)||'io.matrix-events'; }
+  applyEngineNS(){ try{ this.ME().setNamespace(this.demo?this.NS:this.liveNS()); }catch(e){} }
   // One stored operator. Demo writes to the in-memory store (and persists);
   // live writes go through the encrypted homeserver bridge. Returns the anchor
   // for INS so callers can attach DEF/CON to the new entity.
@@ -10479,12 +10508,58 @@ class Component extends DCLogic {
   refold(){
     if(!this.curWs||!window.MatrixEngine||!window.MatrixLive){ this.forceUpdate(); return; }
     try{
+      this.applyEngineNS();
       const events=this.eventsFor(this.curWs);
       const state=this.ME().fold(events);
-      this.clients=this.buildClients(state);
+      this._liveState=state;
+      // Demo: clients are native client/note entities. Live: project the
+      // imported "Client Info" set (rows materialized from blobs) PLUS any
+      // native client entities; kick off fetching any rows not cached yet.
+      this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
+      if(!this.demo) this.materializeLive(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
       this.setState({cur,vals:{},extraNotes:{}});
     }catch(e){ this.forceUpdate(); }
+  }
+  // Set names whose rows are amino "clients" — the firm's "Client Info" set
+  // (declared in the room schema or named by an import).
+  clientSetNames(state){
+    const names=new Set();
+    const declared=(state&&state.schema&&state.schema.tables)||[];
+    declared.forEach(n=>{ if(this.CLIENT_SET_RE.test(n)) names.add(n); });
+    Object.values((state&&state.entities)||{}).forEach(e=>{ if(e&&e._type==='import'&&e.derived_set&&this.CLIENT_SET_RE.test(e.derived_set)) names.add(e.derived_set); });
+    if(!names.size) names.add('Client Info');
+    return [...names];
+  }
+  // Build the live client list: materialized import rows (re-typed as 'client')
+  // merged under any native client entities, folded through buildClients.
+  projectLive(state){
+    const entities={};
+    for(const a in this._importRows){ if(!state.entities||!state.entities[a]) continue; for(const row of this._importRows[a]){ entities[row._anchor]=Object.assign({},row,{_type:'client'}); } }
+    Object.assign(entities, state.entities||{});
+    let clients=this.buildClients({entities, connections:(state&&state.connections)||[]});
+    if(this.MAX_CLIENTS && clients.length>this.MAX_CLIENTS) clients=clients.slice(0,this.MAX_CLIENTS);
+    return clients;
+  }
+  // Fetch + cache any client-set import rows not yet materialized, then
+  // re-project and re-render. No-ops once every import blob is cached.
+  materializeLive(state){
+    const AR=window.AminoRows; if(!AR||!AR.importsForSet) return;
+    const imps=[]; this.clientSetNames(state).forEach(n=>{ AR.importsForSet(state,n).forEach(e=>imps.push(e)); });
+    const missing=imps.filter(e=>e&&e._anchor&&!this._importRows[e._anchor]&&!this._importInFlight.has(e._anchor));
+    if(!missing.length) return;
+    missing.forEach(imp=>{
+      this._importInFlight.add(imp._anchor);
+      Promise.resolve(AR.materializeImportRows(imp)).then(rows=>{ if(Array.isArray(rows)) this._importRows[imp._anchor]=rows; })
+        .catch(()=>{})
+        .then(()=>{
+          this._importInFlight.delete(imp._anchor);
+          const st=this._liveState||state;
+          this.clients=this.projectLive(st);
+          let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
+          this.setState({cur});
+        });
+    });
   }
   buildClients(state){
     const ents=state.entities||{}, notesByClient={};
@@ -10629,7 +10704,20 @@ class Component extends DCLogic {
     const myLocal=(S.session&&S.session.userId)?String(S.session.userId).replace(/^@/,'').split(':')[0]:'';
     let spaceCards=[];
     if(isSpaces){
-      spaceCards=this.workspaces.map(w=>{ let cnt=''; try{ cnt=String(this.buildClients(this.ME().fold(this.eventsFor(w.roomId))).length); }catch(e){ cnt=''; } const [bg,fg]=this.colorFor(w.name); return {roomId:w.roomId,name:w.name,initials:(w.name.trim()[0]||'W').toUpperCase(),av:fg,avBg:bg,count:cnt,onEnter:()=>this.selectWorkspace(w.roomId)}; });
+      this.applyEngineNS();
+      spaceCards=this.workspaces.map(w=>{
+        let cnt='';
+        try{
+          const st=this.ME().fold(this.eventsFor(w.roomId));
+          let n=this.buildClients(st).length;
+          // Imported "Client Info" rows live in blobs; count them from the
+          // import entity's recorded total rather than folding 12k blob rows.
+          if(!this.demo&&window.AminoRows){ this.clientSetNames(st).forEach(name=>{ window.AminoRows.importsForSet(st,name).forEach(imp=>{ n+=(imp.rows_imported||0); }); }); }
+          cnt=String(n);
+        }catch(e){ cnt=''; }
+        const [bg,fg]=this.colorFor(w.name);
+        return {roomId:w.roomId,name:w.name,initials:(w.name.trim()[0]||'W').toUpperCase(),av:fg,avBg:bg,count:cnt,onEnter:()=>this.selectWorkspace(w.roomId)};
+      });
     }
     const q=S.search.trim().toLowerCase();
     const clientList=this.clients.filter(c=>!q||(c.f['Family Name']+' '+c.f['First Name']).toLowerCase().includes(q)||c.f['A#'].toLowerCase().includes(q)).map(c=>{
@@ -10709,7 +10797,14 @@ class Component extends DCLogic {
       onNewSpaceKey:(e)=>{if(e.key==='Enter'){e.preventDefault();this.createWorkspace(S.newSpaceName);}},
       onCreateSpace:()=>this.createWorkspace(S.newSpaceName),
       onExploreDemo:()=>this.exploreDemo(),
-      onBackToSpaces:()=>this.backToSpaces(),
+      onBackToSpaces:()=>{ this.setState({spacePickerOpen:false}); this.backToSpaces(); },
+      // ── Rail space picker (dropdown, not an always-visible list) ──
+      spacePickerOpen:S.spacePickerOpen,
+      onToggleSpacePicker:()=>this.setState({spacePickerOpen:!S.spacePickerOpen}),
+      curSpaceName:((this.workspaces.find(w=>w.roomId===this.curWs)||{}).name)||(this.workspaces.length?'Choose workspace':'No workspaces'),
+      spaceList:this.workspaces.map(w=>{ const on=this.curWs===w.roomId&&isCrm; return {name:w.name,count:(w.roomId===this.curWs?String(this.clients.length):''),bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',icolor:on?'#C2872B':'#8F95A0',onPick:()=>{ this.setState({spacePickerOpen:false}); this.selectWorkspace(w.roomId); }}; }),
+      onNewSpacePrompt:()=>{ this.setState({spacePickerOpen:false}); this.createWorkspace(); },
+      dbNavBg:isDb?'#FBF3E2':'transparent', dbNavColor:isDb?'#8A5A14':'#46505B', dbNavWeight:isDb?'700':'500', dbNavIw:isDb?'-bold':'', dbNavIcolor:isDb?'#C2872B':'#8F95A0',
       railOpen:!S.railCollapsed, railClosed:S.railCollapsed, railW:S.railCollapsed?'62px':(S.railWidth+'px'), railCaret:S.railCollapsed?'caret-double-right':'caret-double-left', onToggleRail:()=>this.setState({railCollapsed:!S.railCollapsed}),
       onResizeStart:(e)=>{ e.preventDefault(); const sx=e.clientX, sw=S.railWidth; const move=(ev)=>{ let w=sw+(ev.clientX-sx); w=Math.max(190,Math.min(480,w)); this.setState({railWidth:w}); }; const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; document.body.style.cursor=''; }; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.body.style.userSelect='none'; document.body.style.cursor='col-resize'; },
       showClientList:isCrm&&!S.listCollapsed, showListReopen:isCrm&&S.listCollapsed, onToggleList:()=>this.setState({listCollapsed:!S.listCollapsed}), onOpenList:()=>this.setState({listCollapsed:false}),
@@ -10788,6 +10883,9 @@ class Component extends DCLogic {
 <!-- Pure fold engine (window.MatrixEngine) + computed fields + Ask-your-data bridge -->
 <script src="engine.js"></script>
 <script src="formula.js"></script>
+<!-- Materializes lazily-stored import set rows (window.AminoRows) so AMINO can
+     project the data bare-metal imported (clients/cases/notes) into its CRM. -->
+<script src="import-rows.js"></script>
 <script src="data-chat.js"></script>
 <!-- Design-component runtime: binds the <x-dc> template to the Component view-model -->
 <script src="dc-runtime.js"></script>
