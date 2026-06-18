@@ -25,6 +25,7 @@ assert.ok(globalThis.AminoDB && globalThis.AminoDB.buildTable, 'AminoDB (db engi
 globalThis.MatrixLive = {
   subscribe: () => () => {},
   isAuthed: () => false,
+  isBooting: () => false,
   getSession: () => ({ mxid: '@admin:aminoimmigration.com' }),
   listRooms: () => [{ roomId: '!ws1', name: 'RK Lacy Law' }],
   getEventsForRoom: () => [],
@@ -49,6 +50,8 @@ const ok = (cond, msg) => { assert.ok(cond, msg); pass++; console.log('  ok ', m
 let vm = c.renderVals();
 ok(vm.noClients === true, 'empty: no seed clients');
 ok(vm.notConnected === true, 'empty: login screen shown until sign-in');
+ok(vm.showLogin === true, 'empty: login form is the visible gate when signed out & not resuming');
+ok(vm.booting === false, 'empty: no resume overlay when nothing is resuming');
 ok(Array.isArray(vm.clients) && vm.clients.length === 0, 'empty: client list is empty');
 
 // 2) fold a real operator stream into the projected client list
@@ -105,5 +108,50 @@ ok(vm.workspaceNav.some((w) => w.name === 'RK Lacy Law'), 'workspaceNav lists th
 ok(vm.workspaceNav.some((w) => w.name === 'New workspace'), 'workspaceNav exposes New workspace');
 ok(vm.quickActions.some((q) => q.label === 'New client'), 'quick action: New client');
 ok(vm.quickActions.some((q) => q.label === 'Invite teammate'), 'quick action: Invite teammate');
+
+// 4) resume race — the "login issue when already logged in" bug.
+// The cold-boot session resume is async: it can finish AFTER this component has
+// mounted and shown the login form. The UI must adopt that live session instead
+// of leaving the form up (where a click fires a SECOND login → new device →
+// crypto-store reset). Drive the bridge methods directly for determinism.
+let loginCalls = 0;
+const authedBridge = {
+  subscribe: () => () => {},
+  isAuthed: () => true,
+  isBooting: () => false,
+  getSession: () => ({ mxid: '@admin:aminoimmigration.com' }),
+  listRooms: () => [{ roomId: '!ws1', name: 'RK Lacy Law' }],
+  getEventsForRoom: () => [],
+  login: async () => { loginCalls++; return {}; },
+  emit: async () => 'a', createRoom: async () => '!ws1', inviteUser: async () => {}, logout: () => {},
+};
+
+// adopt: a live session lands us on the launchpad, no login form
+const c2 = new Component({});
+c2.ML = () => authedBridge;            // pin the bridge for this instance
+c2.adoptLiveSession();
+ok(c2.state.connected === true, 'adopt: a restored session marks us connected');
+ok(c2.state.view === 'spaces', 'adopt: a restored session opens the spaces launchpad');
+ok(c2.renderVals().showLogin === false, 'adopt: the login form is no longer shown');
+
+// connect(): when already authed, never mint a second login
+const c3 = new Component({});
+c3.ML = () => authedBridge;
+c3.state.loginUser = 'admin'; c3.state.loginPass = 'pw';
+await c3.connect();
+ok(loginCalls === 0, 'connect: already-authed never calls login() again (no new device)');
+ok(c3.state.connected === true, 'connect: adopts the existing session instead');
+
+// onLiveChange(): a resume that finishes AFTER mount flips the UI off the login form
+let authed = false;
+const lateBridge = Object.assign({}, authedBridge, { isAuthed: () => authed });
+const c4 = new Component({});
+c4.ML = () => lateBridge;
+c4.onLiveChange();
+ok(c4.state.connected === false, 'resume race: still signed out before the resume settles');
+authed = true;                          // cold-boot resume completes
+c4.onLiveChange();                      // bridge notifies its subscribers
+ok(c4.state.connected === true, 'resume race: the subscriber adopts the session once it lands');
+ok(c4.state.view === 'spaces', 'resume race: adopted session opens the launchpad');
 
 console.log(`\namino-app.test: ${pass} assertions passed`);

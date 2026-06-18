@@ -9635,6 +9635,7 @@
   *{box-sizing:border-box}
   @keyframes am-fade{from{opacity:0}to{opacity:1}}
   @keyframes am-slide{from{transform:translateX(20px);opacity:.4}to{transform:none;opacity:1}}
+  @keyframes am-spin{to{transform:rotate(360deg)}}
   .am-sc::-webkit-scrollbar{width:10px;height:10px}
   .am-sc::-webkit-scrollbar-thumb{background:#D6DBE1;border:3px solid #fff;border-radius:99px}
   .am-sc::-webkit-scrollbar-thumb:hover{background:#b9c0c8}
@@ -9651,8 +9652,26 @@
 
 <div style="position:fixed;inset:0;display:flex;font-family:'Inter',system-ui,sans-serif;background:#F1F3F5;color:#111822;font-size:13.5px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased">
 
+  <!-- ============ RESUMING (cold-boot session resume in flight) ============ -->
+  <!-- Shown instead of the login form while the foundation restores a prior
+       session. Covering this window is what stops a user from signing in again
+       (a second device + a crypto-store reset) when they're already signed in. -->
+  <sc-if value="{{ booting }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;z-index:210;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 80% at 50% -10%,#FBF7EF,#EAE4D8)">
+    <div style="width:392px;max-width:92vw;background:#fff;border:1px solid #E7EAEE;border-radius:16px;box-shadow:0 34px 80px -30px rgba(16,24,40,.45);padding:30px 26px;text-align:center">
+      <div style="display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:18px">
+        <span style="width:42px;height:36px;border-radius:8px;background:#fff;border:1px solid #E7EAEE;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;padding:2px;flex-shrink:0"><img src="assets/c745acef-3a1a-4622-a529-c3f9af2992cc.png" alt="AMINO" style="width:100%;height:100%;object-fit:contain"></span>
+        <span style="line-height:1.15;text-align:left"><span style="display:block;font-size:16px;font-weight:800;letter-spacing:1.5px;color:#18202D">AMINO</span><span style="display:block;font-size:10.5px;font-weight:600;color:#C2872B">Immigration</span></span>
+      </div>
+      <i class="ph ph-spinner-gap" style="font-size:26px;color:#C2872B;display:inline-block;animation:am-spin 1s linear infinite"></i>
+      <div style="font-size:15px;font-weight:800;color:#18202D;letter-spacing:-.2px;margin-top:14px">Resuming your session…</div>
+      <div style="font-size:11.5px;color:#6B7682;line-height:1.5;margin-top:6px">Restoring your encrypted keys on this device. You're already signed in — no need to log in again.</div>
+    </div>
+  </div>
+  </sc-if>
+
   <!-- ============ MATRIX SIGN-IN GATE ============ -->
-  <sc-if value="{{ notConnected }}" hint-placeholder-val="{{ false }}">
+  <sc-if value="{{ showLogin }}" hint-placeholder-val="{{ false }}">
   <div style="position:absolute;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:radial-gradient(120% 80% at 50% -10%,#FBF7EF,#EAE4D8)">
     <div style="width:392px;max-width:92vw;background:#fff;border:1px solid #E7EAEE;border-radius:16px;box-shadow:0 34px 80px -30px rgba(16,24,40,.45);padding:26px 26px 20px">
       <div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">
