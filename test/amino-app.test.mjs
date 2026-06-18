@@ -90,6 +90,7 @@ c._liveState = ME.fold(timeline); c._renderState = ME.fold(timeline); // demo-li
 vm = c.renderVals();
 ok(vm.clients.length === 2, 'render: client list shows folded clients');
 ok(/Lopez|San Juan/.test(vm.cur.name), 'render: record panel header is a real client');
+ok(vm.segCrmWeight === '700' && vm.segDbWeight === '600', 'view toggle highlights Clients in the CRM view');
 
 // 3b) the Database view (only computed on the db screen) shows every real set
 c.state.view = 'db';
@@ -97,6 +98,7 @@ vm = c.renderVals();
 ok(vm.dbRows.length === 2, 'render: Database view shows folded rows');
 ok(vm.dbTabs.some((t) => t.name === 'client'), 'Database lists the real `client` set as a tab');
 ok(vm.dbColumns.some((col) => col.name === 'Family Name'), 'Database columns are the folded fields');
+ok(vm.segDbWeight === '700' && vm.segCrmWeight === '600', 'view toggle flips to Database in the db view');
 
 // 3c) opening a row populates the record drawer from the real entity
 c.state.dbRecord = { set: 'client', anchor: A };

@@ -9794,9 +9794,12 @@
           </div>
         </sc-if>
       </div>
-      <button onclick="{{ onOpenDb }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:8px 10px;border:none;border-radius:8px;background:{{ dbNavBg }};color:{{ dbNavColor }};font-size:12.5px;font-weight:{{ dbNavWeight }};cursor:pointer;text-align:left;margin-bottom:1px">
-        <i class="ph{{ dbNavIw }} ph-database" style="font-size:16px;color:{{ dbNavIcolor }}"></i><span style="flex:1">Database</span><span style="font-size:10px;color:#A9AEB6;font-variant-numeric:tabular-nums">{{ clientCount }}</span>
-      </button>
+      <!-- View toggle: Clients (CRM) vs Database — the same workspace, two views.
+           The active side is raised/white so the current mode is unmistakable. -->
+      <div style="display:flex;gap:3px;background:#EFF1F4;border:1px solid #E4E7EB;border-radius:9px;padding:3px;margin:4px 0 3px">
+        <button onclick="{{ onShowCrm }}" title="Client records (CRM)" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;border:none;border-radius:7px;background:{{ segCrmBg }};color:{{ segCrmColor }};font-size:12px;font-weight:{{ segCrmWeight }};cursor:pointer;box-shadow:{{ segCrmShadow }}"><i class="ph{{ segCrmIw }} ph-users-three" style="font-size:15px;color:{{ segCrmIcolor }}"></i> Clients</button>
+        <button onclick="{{ onOpenDb }}" title="Database — all tables" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;border:none;border-radius:7px;background:{{ segDbBg }};color:{{ segDbColor }};font-size:12px;font-weight:{{ segDbWeight }};cursor:pointer;box-shadow:{{ segDbShadow }}"><i class="ph{{ segDbIw }} ph-database" style="font-size:15px;color:{{ segDbIcolor }}"></i> Database</button>
+      </div>
 
       <sc-if value="{{ isCrm }}" hint-placeholder-val="{{ true }}">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#8F95A0;font-weight:700;padding:15px 8px 6px;display:flex;align-items:center;gap:8px">Record layouts <span style="flex:1"></span><i class="ph ph-folder-simple-plus" style="color:#B6BBC2;cursor:pointer;font-size:14px" title="New folder"></i><i class="ph ph-plus" style="color:#B6BBC2;cursor:pointer;font-size:13px" title="New layout"></i></div>

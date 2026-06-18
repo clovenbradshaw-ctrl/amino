@@ -698,6 +698,11 @@ class Component extends DCLogic {
       spaceList:this.workspaces.map(w=>{ const on=this.curWs===w.roomId&&isCrm; return {name:w.name,count:(w.roomId===this.curWs?String(this.clients.length):''),bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',icolor:on?'#C2872B':'#8F95A0',onPick:()=>{ this.setState({spacePickerOpen:false}); this.selectWorkspace(w.roomId); }}; }),
       onNewSpacePrompt:()=>{ this.setState({spacePickerOpen:false}); this.createWorkspace(); },
       dbNavBg:isDb?'#FBF3E2':'transparent', dbNavColor:isDb?'#8A5A14':'#46505B', dbNavWeight:isDb?'700':'500', dbNavIw:isDb?'-bold':'', dbNavIcolor:isDb?'#C2872B':'#8F95A0',
+      // Clients/Database segmented toggle — same workspace, two clearly-labeled
+      // views, so it's obvious which one you're in (active side is raised/white).
+      segCrmBg:isCrm?'#fff':'transparent', segCrmColor:isCrm?'#18202D':'#6B7682', segCrmWeight:isCrm?'700':'600', segCrmShadow:isCrm?'0 1px 2px rgba(16,24,40,.12)':'none', segCrmIw:isCrm?'-bold':'', segCrmIcolor:isCrm?'#C2872B':'#9aa3ad',
+      segDbBg:isDb?'#fff':'transparent', segDbColor:isDb?'#18202D':'#6B7682', segDbWeight:isDb?'700':'600', segDbShadow:isDb?'0 1px 2px rgba(16,24,40,.12)':'none', segDbIw:isDb?'-bold':'', segDbIcolor:isDb?'#C2872B':'#9aa3ad',
+      onShowCrm:()=>this.setState({view:'crm'}),
       railOpen:!S.railCollapsed, railClosed:S.railCollapsed, railW:S.railCollapsed?'62px':(S.railWidth+'px'), railCaret:S.railCollapsed?'caret-double-right':'caret-double-left', onToggleRail:()=>this.setState({railCollapsed:!S.railCollapsed}),
       onResizeStart:(e)=>{ e.preventDefault(); const sx=e.clientX, sw=S.railWidth; const move=(ev)=>{ let w=sw+(ev.clientX-sx); w=Math.max(190,Math.min(480,w)); this.setState({railWidth:w}); }; const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; document.body.style.cursor=''; }; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.body.style.userSelect='none'; document.body.style.cursor='col-resize'; },
       showClientList:isCrm&&!S.listCollapsed, showListReopen:isCrm&&S.listCollapsed, onToggleList:()=>this.setState({listCollapsed:!S.listCollapsed}), onOpenList:()=>this.setState({listCollapsed:false}),
