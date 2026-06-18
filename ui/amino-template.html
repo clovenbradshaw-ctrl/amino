@@ -9711,6 +9711,7 @@
       <sc-if value="{{ demoActive }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#0F7048;background:#EAF6F0;border:1px solid #CDE8DC;border-radius:6px;padding:3px 9px;margin-right:4px"><i class="ph-fill ph-compass"></i> demo data</span></sc-if>
       <span style="text-align:right;line-height:1.2;margin-right:4px"><span style="display:block;font-size:12px;font-weight:600;color:#18202D">{{ meName }}</span><span style="display:block;font-size:10px;color:#8F95A0">{{ meSub }}</span></span>
       <button onclick="{{ onRefreshSpaces }}" title="Refresh workspaces" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#6B7682;font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+      <button onclick="{{ onOpenSync }}" title="Sync & storage" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#6B7682;font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-cloud-arrow-down"></i> Sync</button>
       <button onclick="{{ onDisconnect }}" title="Sign out" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#6B7682;font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-sign-out"></i> Sign out</button>
     </div>
 
@@ -9741,6 +9742,86 @@
         <sc-if value="{{ spacesEmpty }}" hint-placeholder-val="{{ false }}">
           <div style="margin-top:18px;padding:14px 16px;background:#fff;border:1px solid #EFE2C8;border-radius:10px;font-size:12px;color:#8A6A2E;line-height:1.5">No workspaces yet. A workspace is an encrypted Matrix room — create one above, or ask an admin to invite you to theirs.</div>
         </sc-if>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ============ SYNC & STORAGE ============ -->
+  <sc-if value="{{ isSync }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;z-index:150;display:flex;flex-direction:column;background:radial-gradient(120% 80% at 50% -10%,#FBF7EF,#EEF0F2);font-family:'Inter',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:11px;padding:16px 24px">
+      <button onclick="{{ onBackFromSync }}" title="Back" style="width:34px;height:34px;flex-shrink:0;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#46505B;cursor:pointer;display:inline-flex;align-items:center;justify-content:center"><i class="ph ph-arrow-left" style="font-size:16px"></i></button>
+      <span style="line-height:1.15"><span style="display:block;font-size:16px;font-weight:800;color:#18202D;letter-spacing:-.2px">Sync &amp; storage</span><span style="display:block;font-size:11px;font-weight:600;color:#8F95A0">Updated {{ syncUpdated }}</span></span>
+      <span style="flex:1"></span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:{{ syncPhaseColor }};background:{{ syncPhaseBg }};border-radius:999px;padding:5px 12px"><i class="ph-fill ph-circle" style="font-size:8px"></i> {{ syncPhaseLabel }}</span>
+      <button onclick="{{ onSyncRefresh }}" title="Refresh now" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#6B7682;font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+      <button onclick="{{ onResync }}" title="Re-pull from the durable block chain" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #E1E4E8;border-radius:8px;background:#18202D;color:#fff;font-size:12px;font-weight:700;cursor:pointer"><i class="ph ph-cloud-arrow-down"></i> Resync</button>
+    </div>
+
+    <div class="am-sc" style="flex:1;overflow-y:auto;padding:6px 24px 40px">
+      <div style="max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+        <sc-if value="{{ syncDemo }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:11px 15px;background:#F1E9FE;border:1px solid #E1D2F7;border-radius:10px;font-size:12px;color:#6B3FA0;font-weight:600;display:flex;align-items:center;gap:8px"><i class="ph-fill ph-compass"></i> Demo data — no homeserver sync. The storage figures below are the real local cache on this device.</div>
+        </sc-if>
+
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px">
+          <!-- Initial sync -->
+          <div style="background:#fff;border:1px solid #E7EAEE;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><i class="ph-bold ph-broadcast" style="color:#C2872B;font-size:16px"></i><span style="font-size:13px;font-weight:800;color:#18202D">Initial sync</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F4F5F7"><span style="font-size:12px;color:#6B7682">Workspaces reconciled</span><span style="font-size:12.5px;font-weight:700;color:#18202D;font-variant-numeric:tabular-nums">{{ syncRooms }}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F4F5F7"><span style="font-size:12px;color:#6B7682">Blocks fetched</span><span style="font-size:12.5px;font-weight:700;color:#18202D;font-variant-numeric:tabular-nums">{{ syncBlocks }}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F4F5F7"><span style="font-size:12px;color:#6B7682">Current workspace</span><span style="font-size:12.5px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">{{ syncCurrentRoom }}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F4F5F7"><span style="font-size:12px;color:#6B7682">Events recovered from chain</span><span style="font-size:12.5px;font-weight:700;color:#18202D;font-variant-numeric:tabular-nums">{{ syncRecovered }}</span></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0"><span style="font-size:12px;color:#6B7682">Connection</span><span style="display:inline-flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:700;color:{{ syncNetColor }};background:{{ syncNetBg }};border-radius:999px;padding:3px 10px">{{ syncNetLabel }}</span><span style="font-size:11px;color:#9aa3ad">{{ syncState }}</span></span></div>
+            <sc-if value="{{ syncHasErrors }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:12px;padding-top:10px;border-top:1px solid #F4F5F7">
+                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#B42318;font-weight:700;margin-bottom:6px">Errors</div>
+                <sc-for list="{{ syncErrors }}" as="er" hint-placeholder-count="1"><div style="font-size:11.5px;color:#8A3A33;padding:3px 0"><b>{{ er.name }}</b> — {{ er.message }}</div></sc-for>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- Pending writes -->
+          <div style="background:#fff;border:1px solid #E7EAEE;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.04);display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><i class="ph-bold ph-paper-plane-tilt" style="color:#C2872B;font-size:16px"></i><span style="font-size:13px;font-weight:800;color:#18202D">Pending writes</span></div>
+            <div style="font-size:38px;font-weight:800;color:#18202D;letter-spacing:-1px;line-height:1">{{ syncPending }}</div>
+            <div style="font-size:12px;color:#6B7682;margin-top:8px">{{ syncPendingNote }}</div>
+            <span style="flex:1"></span>
+            <div style="margin-top:14px;padding:10px 12px;background:#FBFCFD;border:1px solid #EEF0F2;border-radius:9px;font-size:11px;color:#8F95A0;line-height:1.5">Edits are appended locally first, then sent. A non-zero count just means a send is in flight or queued offline.</div>
+          </div>
+        </div>
+
+        <!-- Local storage -->
+        <div style="background:#fff;border:1px solid #E7EAEE;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><i class="ph-bold ph-hard-drives" style="color:#C2872B;font-size:16px"></i><span style="font-size:13px;font-weight:800;color:#18202D">On this device</span><span style="flex:1"></span><span style="font-size:18px;font-weight:800;color:#18202D">{{ storageMeasured }}</span></div>
+          <div style="font-size:11.5px;color:#8F95A0;margin-bottom:12px">Encrypted local copy — OPFS binary logs + media + the app-shell cache.</div>
+          <div style="height:8px;background:#EFF1F4;border-radius:999px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:{{ storagePct }}%;background:linear-gradient(90deg,#C2872B,#E0A94B);border-radius:999px"></div></div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#8F95A0;font-weight:600;margin-bottom:14px"><span>{{ storageUsage }} used of {{ storageQuota }}</span><span>{{ storagePctText }}</span></div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <sc-for list="{{ storageBuckets }}" as="bk" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;background:#FBFCFD;border:1px solid #EEF0F2;border-radius:10px">
+                <span style="width:34px;height:34px;border-radius:9px;background:#FBF3E2;color:#C2872B;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ph ph-{{ bk.icon }}" style="font-size:16px"></i></span>
+                <span style="flex:1;min-width:0;line-height:1.25"><span style="display:block;font-size:12px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ bk.label }}</span><span style="display:block;font-size:10.5px;color:#9aa3ad">{{ bk.files }} files</span></span>
+                <span style="font-size:12.5px;font-weight:700;color:#18202D;font-variant-numeric:tabular-nums">{{ bk.bytes }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:13px;border-top:1px solid #F4F5F7">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:{{ storageDurableColor }};background:{{ storageDurableBg }};border-radius:999px;padding:5px 12px"><i class="ph-fill ph-shield-check" style="font-size:12px"></i> {{ storageDurableLabel }}</span>
+            <sc-if value="{{ storageNotPinned }}" hint-placeholder-val="{{ true }}"><button onclick="{{ onMakeDurable }}" style="height:30px;padding:0 13px;border:1px solid #E1E4E8;border-radius:8px;background:#fff;color:#46505B;font-size:11.5px;font-weight:700;cursor:pointer">Pin storage</button></sc-if>
+            <span style="flex:1"></span>
+            <span style="font-size:10.5px;color:#B6BBC2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%" title="{{ storageIdb }}">IndexedDB: {{ storageIdb }}</span>
+          </div>
+        </div>
+
+        <!-- Activity log -->
+        <div style="background:#fff;border:1px solid #E7EAEE;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px"><i class="ph-bold ph-list-bullets" style="color:#C2872B;font-size:16px"></i><span style="font-size:13px;font-weight:800;color:#18202D">Recent activity</span><span style="flex:1"></span><span style="font-size:11px;color:#9aa3ad">Memory {{ syncMem }}</span></div>
+          <sc-for list="{{ syncLog }}" as="lg" hint-placeholder-count="4"><div style="font-size:11.5px;color:#5A5D63;padding:4px 0;border-bottom:1px solid #F6F7F9;line-height:1.4">{{ lg.msg }}</div></sc-for>
+        </div>
       </div>
     </div>
   </div>
@@ -10206,9 +10287,10 @@
           <span style="width:1px;height:18px;background:#E4E7EB;margin:0 5px"></span>
           <sc-for list="{{ dbTools }}" as="tl" hint-placeholder-count="4"><button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;background:transparent;border:none;border-radius:6px;color:#5A5D63;font-size:12px;font-weight:500;cursor:pointer"><i class="ph ph-{{ tl.icon }}" style="font-size:14px"></i> {{ tl.label }}</button></sc-for>
           <span style="flex:1"></span>
+          <span style="font-size:11px;color:#8F95A0;font-weight:600;margin-right:9px;font-variant-numeric:tabular-nums;white-space:nowrap">{{ dbCountText }} records</span>
           <div style="display:flex;align-items:center;gap:7px;width:210px;background:#F5F6F7;border:1px solid #E4E7EB;border-radius:7px;padding:0 9px;height:30px"><i class="ph ph-magnifying-glass" style="color:#8F95A0;font-size:13px"></i><input value="{{ dbSearch }}" oninput="{{ onDbSearch }}" placeholder="Search records…" style="flex:1;background:transparent;border:none;outline:none;color:#18202D;font-size:12px;min-width:0"></div>
         </div>
-        <div class="am-sc" data-screen-label="{{ dbName }}" style="flex:1;min-height:0;overflow:auto">
+        <div class="am-sc" data-am-grid data-screen-label="{{ dbName }}" style="flex:1;min-height:0;overflow:auto">
       <div style="min-width:max-content">
         <div style="display:grid;grid-template-columns:{{ dbColTemplate }};position:sticky;top:0;z-index:5;background:#F1F3F5;border-bottom:1px solid #DDE2E7">
           <sc-for list="{{ dbColumns }}" as="c" hint-placeholder-count="6">
@@ -10227,6 +10309,11 @@
             </sc-for>
           </div>
         </sc-for>
+        <!-- Windowing: rows render in a bounded slice (grows on scroll), so a huge
+             imported sheet never floods the DOM. "Load more" pulls the next page. -->
+        <sc-if value="{{ dbHasMore }}" hint-placeholder-val="{{ false }}">
+          <div onclick="{{ onDbMore }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:#fff;border-bottom:1px solid #ECEFF2;color:#2747C9;font-size:12px;font-weight:700;cursor:pointer"><i class="ph ph-arrow-down"></i> {{ dbMoreText }}</div>
+        </sc-if>
       </div>
       </div>
       </div>
