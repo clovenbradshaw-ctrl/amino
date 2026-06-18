@@ -177,7 +177,7 @@ class Component extends DCLogic {
     this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -268,6 +268,8 @@ class Component extends DCLogic {
       if((!this.demo)&&this.state.wsSyncing&&this.workspaces.length>0) this.setState({wsSyncing:false});
       if((!this.demo)&&rooms.length===0){ try{ const ss=this.ML().getSyncStatus&&this.ML().getSyncStatus(); console.debug('[amino] no eo.workspace rooms discovered yet — sync phase:', ss&&ss.phase, '· session:', this.ML().getSession&&this.ML().getSession()); }catch(e){} }
       if((!this.curWs||!this.workspaces.some(w=>w.roomId===this.curWs))&&this.workspaces[0]) this.curWs=this.workspaces[0].roomId;
+      // First time we settle on a room, open (load+decrypt) it before folding.
+      if(!this.demo && this.curWs && this.curWs!==this._openedWs){ this.openCurrent(); return; }
       this.refold();
     }catch(e){ this.forceUpdate(); }
   }
@@ -292,7 +294,21 @@ class Component extends DCLogic {
     this.setState({wsSyncing:true});
     tick();
   }
-  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); this.refold(); }
+  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); if(this.demo) this.refold(); else this.openCurrent(); }
+  // Load + decrypt the active room's event chain into the bridge BEFORE folding.
+  // getEventsForRoom() returns an EMPTY buffer until openRoom() runs (it reads the
+  // room's OPFS chain and syncs the server tail into memory) — so without this
+  // every live workspace folds to 0 records, which is exactly what "0 records · 0
+  // fields" was. openRoom dedupes (no-op if already open) and fires notify('events')
+  // as history/tail arrive → onLiveChange → loadWorkspaces → refold fills it in.
+  async openCurrent(){
+    const room=this.curWs;
+    if(this.demo||!room){ this.refold(); return; }
+    this._openedWs=room;
+    try{ if(this.ML().openRoom) await this.ML().openRoom(room); }
+    catch(e){ this._openedWs=null; console.warn('[amino] openRoom failed:', e); }
+    if(this.curWs===room) this.refold();
+  }
   async createWorkspace(nameArg){
     const name=(typeof nameArg==='string'&&nameArg.trim())?nameArg.trim():((typeof prompt==='function')&&prompt('New workspace name')); if(!name) return;
     if(this.demo){

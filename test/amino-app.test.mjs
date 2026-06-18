@@ -169,4 +169,15 @@ c5.state.wsSyncing = false;             // sync window closed, still nothing fou
 vm5 = c5.renderVals();
 ok(vm5.spacesSyncing === false && /Refresh/.test(vm5.spacesTagline), 'settled-empty: prompt to create or Refresh, not a bare "create your first"');
 
+// 6) entering a workspace must OPEN (load + decrypt) the room before folding.
+// Without openRoom(), getEventsForRoom() returns an empty buffer and the
+// workspace folds to 0 records — the "0 records · 0 fields" bug.
+let opened = null;
+const openBridge = Object.assign({}, authedBridge, { openRoom: async (id) => { opened = id; } });
+const c6 = new Component({});
+c6.ML = () => openBridge;
+c6.selectWorkspace('!ws1');
+await Promise.resolve();
+ok(opened === '!ws1', 'selectWorkspace opens (loads+decrypts) the room before folding');
+
 console.log(`\namino-app.test: ${pass} assertions passed`);
