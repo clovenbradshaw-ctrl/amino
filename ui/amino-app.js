@@ -74,15 +74,19 @@ class Component extends DCLogic {
     // ── Live Matrix transport: real homeserver login, encrypted rooms, fold ──
     this.NS='app.aminoimmigration'; this.HOMESERVER='https://app.aminoimmigration.com';
     this.clients=[]; this.workspaces=[]; this.curWs=null;
+    // Demo path (mirrors bare-metal's "explore demo data"): an in-memory event
+    // store of immigration seed spaces, folded through the same pipeline as a
+    // live homeserver. Nothing leaves the browser; edits persist to localStorage.
+    this.demo=false; this._demoRooms=[]; this._demoEvents={}; this.DEMO_KEY='amino.demo.store.v1';
     this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'clientInfo', dbSearch:'', dbView:{clientInfo:'all',caseMaster:'all',caseNotes:'all'}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
-      connected:false, connecting:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'' };
+      connected:false, connecting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'' };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live timeline changes, and resume a
     // restored session (the foundation auto-unlocks a prior login on cold start).
     this.whenLive().then(()=>{ try{
       this.ME().setNamespace(this.NS);
-      if(!this._unsub) this._unsub=this.ML().subscribe(()=>this.refold());
-      if(this.ML().isAuthed&&this.ML().isAuthed()){ const sess=this.ML().getSession()||{}; this.setState({connected:true,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||''}}); this.loadWorkspaces(); }
+      if(!this._unsub) this._unsub=this.ML().subscribe(()=>{ if(this.demo) this.refold(); else this.loadWorkspaces(); });
+      if(this.ML().isAuthed&&this.ML().isAuthed()){ const sess=this.ML().getSession()||{}; this.setState({connected:true,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||''},view:'spaces'}); this.loadWorkspaces(); }
     }catch(e){} });
   }
 
@@ -101,36 +105,131 @@ class Component extends DCLogic {
       await this.whenLive();
       await this.ML().login({ homeserver:this.HOMESERVER, username:u, password:this.state.loginPass });
       const sess=this.ML().getSession()||{};
-      this.setState({connected:true,connecting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||u},loginPass:''});
+      this.demo=false;
+      // Land on the spaces launchpad — let the user pick which workspace to open
+      // instead of dropping silently into the first one.
+      this.setState({connected:true,demo:false,connecting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||u},loginPass:'',view:'spaces'});
       this.loadWorkspaces();
     }catch(e){ this.setState({connecting:false,loginErr:(e&&e.message)||'Sign-in failed.'}); }
   }
-  disconnect(){ try{ this.ML()&&this.ML().logout&&this.ML().logout(); }catch(e){} this.clients=[]; this.workspaces=[]; this.curWs=null; this.setState({connected:false,loginPass:'',cur:0}); }
+  // Explore demo data without a homeserver — seeds a handful of immigration
+  // workspaces locally and folds them through the same pipeline as a live login.
+  async exploreDemo(){
+    try{ await this.whenLive(); }catch(e){}
+    try{ this.ME().setNamespace(this.NS); }catch(e){}
+    const saved=this.loadDemo();
+    if(saved&&Array.isArray(saved.rooms)&&saved.rooms.length){ this._demoRooms=saved.rooms; this._demoEvents=saved.eventsByRoom||{}; }
+    else { const built=this.buildDemoSpaces(); this._demoRooms=built.rooms; this._demoEvents=built.eventsByRoom; this.saveDemo(); }
+    this.demo=true; this.curWs=null;
+    this.setState({connected:true,demo:true,connecting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
+    this.loadWorkspaces();
+  }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,loginPass:'',cur:0,view:'crm'}); }
+  backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
+
+  // ── demo store persistence (browser-local; no network) ──
+  loadDemo(){ try{ const raw=localStorage.getItem(this.DEMO_KEY); if(!raw) return null; const p=JSON.parse(raw); return (p&&p.rooms&&p.eventsByRoom)?p:null; }catch(e){ return null; } }
+  saveDemo(){ if(!this.demo&&!this._demoRooms.length) return; try{ localStorage.setItem(this.DEMO_KEY, JSON.stringify({rooms:this._demoRooms,eventsByRoom:this._demoEvents})); }catch(e){} }
+  // The events backing a room — demo store when offline, the live bridge cache otherwise.
+  eventsFor(roomId){ if(this.demo) return this._demoEvents[roomId]||[]; try{ return (this.ML().getEventsForRoom&&this.ML().getEventsForRoom(roomId))||[]; }catch(e){ return []; } }
+  // One stored operator. Demo writes to the in-memory store (and persists);
+  // live writes go through the encrypted homeserver bridge. Returns the anchor
+  // for INS so callers can attach DEF/CON to the new entity.
+  async emitOp(roomId, op, content){
+    if(this.demo){
+      const sender=(this.state.session&&this.state.session.userId)||'@demo:aminoimmigration.com';
+      const ts=Date.now(); let c=content, anchor=(content&&content.anchor)||null;
+      if(op===this.ME().OP.INS&&!anchor){ anchor=this.ME().makeAnchor(content.entity_type||'entity',content.payload||{},sender,ts); c=Object.assign({},content,{anchor}); }
+      const ev={ event_id:'$amino_'+ts.toString(36)+'_'+Math.random().toString(36).slice(2,6), type:this.NS+'.'+op.key, content:c, sender, origin_server_ts:ts };
+      (this._demoEvents[roomId]=this._demoEvents[roomId]||[]).push(ev); this.saveDemo();
+      return anchor;
+    }
+    return await this.ML().emit(roomId, op, content);
+  }
+
+  // Immigration seed spaces for the demo path. Each workspace is an in-memory
+  // room of DEF/INS/CON operators shaped exactly like window.MatrixLive.emit()
+  // produces, so buildClients(fold(events)) projects real clients, cases and
+  // notes — the same query path a live homeserver feeds.
+  buildDemoSpaces(){
+    const ME=this.ME(), ty=(op)=>this.NS+'.'+op.key;
+    let t=1716600000000, seq=0; const next=()=>(t+=60000);
+    const eid=()=>'$seed_'+(seq++).toString(36).padStart(4,'0');
+    const rooms=[], byRoom={};
+    const space=(roomId,name)=>{ rooms.push({roomId,name}); byRoom[roomId]=[]; return roomId; };
+    const push=(roomId,op,content,sender)=>{ byRoom[roomId].push({event_id:eid(),type:ty(op),content,sender:sender||'@admin:aminoimmigration.com',origin_server_ts:next()}); };
+    const schema=(roomId)=>push(roomId,ME.OP.DEF,{anchor:null,path:'_schema.tables',value:['client','case','note']});
+    const client=(roomId,fields,sender)=>{ const anchor=ME.makeAnchor('client',{i:++seq},sender||'@admin:aminoimmigration.com',t); push(roomId,ME.OP.INS,{anchor,entity_type:'client',payload:{}},sender); Object.keys(fields).forEach(k=>{ const v=fields[k]; if(v!=null&&v!=='') push(roomId,ME.OP.DEF,{anchor,path:k,value:v},sender); }); return anchor; };
+    const note=(roomId,clientAnchor,n,sender)=>{ const anchor=ME.makeAnchor('note',{i:++seq},sender||'@admin:aminoimmigration.com',t); push(roomId,ME.OP.INS,{anchor,entity_type:'note',payload:Object.assign({client:clientAnchor},n)},sender); };
+    const link=(roomId,a,b,rel)=>push(roomId,ME.OP.CON,{source_anchor:a,target_anchor:b,relation_type:rel});
+
+    // ── Space 1 — the active caseload ──
+    const s1=space('!amino_active','RK Lacy Law — Active Caseload'); schema(s1);
+    const a1=client(s1,{'First Name':'Maria Fernanda','Family Name':'Lopez','A#':'A 098-447-201','Country':'Honduras','DOB':'03/14/1990','Entry Date':'06/02/2021','Case Status':'In proceedings','Relief Sought':'Asylum','Client Engagement Status':'Engaged','Case Manager':'C. Vega','Phone Number':'(713) 555-0192','Client Email':'m.lopez@example.com','Matter':'Lopez — Asylum (EOIR)','Case Type':'Removal Defense','Priority Level':'High','NTA Date':'08/15/2023','Asylum Case Status':'Filed','I589 Biom Status':'Completed','Relief Filed?':'Yes','Date Relief Filed':'05/02/2025','box_shared_link':'https://app.box.com/s/lopez-mf','PP':'https://app.practicepanther.com/matters/lopez'});
+    const a2=client(s1,{'First Name':'Patricio','Family Name':'San Juan','A#':'A 077-221-905','Country':'Guatemala','DOB':'11/02/1985','Entry Date':'01/19/2019','Case Status':'USCIS pending','Relief Sought':'Adjustment of Status','Client Engagement Status':'Engaged','Case Manager':'C. Vega','Phone Number':'(281) 555-7740','Matter':'San Juan — I-485','Case Type':'Family','Priority Level':'Medium'});
+    const a3=client(s1,{'First Name':'Chiamaka','Family Name':'Okafor','A#':'A 213-665-118','Country':'Nigeria','DOB':'07/22/1993','Entry Date':'09/30/2022','Case Status':'Detained','Relief Sought':'Bond','Client Engagement Status':'Engaged','Case Manager':'A. Reyes','Priority Level':'High','Matter':'Okafor — Bond / Removal','Case Type':'Detained'});
+    const a4=client(s1,{'First Name':'Bao','Family Name':'Nguyen','A#':'A 154-008-772','Country':'Vietnam','DOB':'02/09/1979','Entry Date':'03/12/2016','Case Status':'Granted','Relief Sought':'Asylum','Client Engagement Status':'Closed','Asylum Case Status':'Granted','Case Manager':'C. Vega','Matter':'Nguyen — Asylum (granted)'});
+    const a5=client(s1,{'First Name':'Diego','Family Name':'Ramirez','Country':'Mexico','DOB':'05/27/1998','Case Status':'Intake','Relief Sought':'TPS','Client Engagement Status':'Prospect','Case Manager':'A. Reyes','Matter':'Ramirez — TPS (intake)'});
+    note(s1,a1,{text:'I-589 filed with the court',type:'Filing',date:'May 2, 2025',by:'CVega',desc:'Asylum application + supporting declaration filed.'});
+    note(s1,a1,{text:'Master calendar hearing',type:'Hearing',date:'Aug 14, 2025',by:'CVega',due:'Aug 14, 2025',desc:'EOIR Houston · Judge Patel · 8:30am.'});
+    note(s1,a3,{text:'Prepare bond packet',type:'Task',date:'Jun 3, 2026',by:'AReyes',due:'Jun 20, 2026',desc:'Sponsor letter + community-ties evidence.'});
+    note(s1,a2,{text:'Biometrics completed',type:'Note',date:'Apr 9, 2026',by:'CVega'});
+    link(s1,a1,a2,'sibling');
+
+    // ── Space 2 — asylum cohort ──
+    const s2=space('!amino_asylum','Asylum Cohort 2026'); schema(s2);
+    const b1=client(s2,{'First Name':'Amina','Family Name':'Haddad','A#':'A 320-117-554','Country':'Syria','DOB':'12/01/1992','Entry Date':'10/04/2023','Case Status':'In proceedings','Relief Sought':'Asylum','Client Engagement Status':'Engaged','Asylum Case Status':'Pending','I589 Biom Status':'Scheduled','Case Manager':'C. Vega','Matter':'Haddad — Asylum','Priority Level':'High'});
+    const b2=client(s2,{'First Name':'Yusuf','Family Name':'Abdi','A#':'A 410-552-009','Country':'Somalia','DOB':'08/19/1988','Entry Date':'07/11/2022','Case Status':'In proceedings','Relief Sought':'Asylum','Client Engagement Status':'Engaged','Asylum Case Status':'Filed','I589 Biom Status':'Completed','Case Manager':'A. Reyes','Matter':'Abdi — Asylum'});
+    const b3=client(s2,{'First Name':'Lucia','Family Name':'Moreno','A#':'A 288-330-461','Country':'Venezuela','DOB':'04/15/1996','Entry Date':'02/28/2023','Case Status':'USCIS pending','Relief Sought':'Affirmative Asylum','Client Engagement Status':'Engaged','Asylum Case Status':'Pending','Case Manager':'C. Vega','Matter':'Moreno — Affirmative asylum'});
+    const b4=client(s2,{'First Name':'Tenzin','Family Name':'Dorjee','A#':'A 192-744-820','Country':'China (Tibet)','DOB':'09/03/1990','Entry Date':'05/21/2021','Case Status':'Granted','Relief Sought':'Asylum','Client Engagement Status':'Closed','Asylum Case Status':'Granted','Case Manager':'A. Reyes','Matter':'Dorjee — Asylum (granted)'});
+    note(s2,b1,{text:'Individual hearing scheduled',type:'Hearing',date:'Sep 9, 2026',by:'CVega',due:'Sep 9, 2026'});
+    note(s2,b2,{text:'Country-conditions packet filed',type:'Filing',date:'Mar 30, 2026',by:'AReyes'});
+    note(s2,b3,{text:'USCIS asylum interview prep',type:'Appointment',date:'Jul 1, 2026',by:'CVega',due:'Jul 1, 2026'});
+
+    // ── Space 3 — FOIA / EAD tracker ──
+    const s3=space('!amino_foia','FOIA / EAD Tracker'); schema(s3);
+    const c1=client(s3,{'First Name':'Maria Fernanda','Family Name':'Lopez','A#':'A 098-447-201','Country':'Honduras','USCIS FOIA Stage':'In Review','FOIA #':'NRC2025-123456','FOIA Receipt':'04/18/2025','USCIS FOIA Link':'https://first.uscis.gov/req/123456','FOIA CD Date':'06/01/2025','Relief Filed?':'Yes','box_shared_link':'https://app.box.com/s/lopez-foia','Client Engagement Status':'Engaged'});
+    const c2=client(s3,{'First Name':'Yusuf','Family Name':'Abdi','A#':'A 410-552-009','Country':'Somalia','USCIS FOIA Stage':'Received','FOIA #':'NRC2026-771002','FOIA Receipt':'02/10/2026','Relief Filed?':'No','Client Engagement Status':'Engaged'});
+    const c3=client(s3,{'First Name':'Lucia','Family Name':'Moreno','A#':'A 288-330-461','Country':'Venezuela','USCIS FOIA Stage':'Requested','FOIA #':'NRC2026-880551','Relief Filed?':'No','Client Engagement Status':'Engaged'});
+    const c4=client(s3,{'First Name':'Bao','Family Name':'Nguyen','A#':'A 154-008-772','Country':'Vietnam','USCIS FOIA Stage':'Complete','FOIA #':'NRC2024-553410','FOIA Receipt':'11/02/2024','FOIA CD Date':'01/15/2025','Relief Filed?':'Yes','box_shared_link':'https://app.box.com/s/nguyen-foia','Client Engagement Status':'Closed'});
+    note(s3,c1,{text:'FOIA CD received — indexing A-file',type:'Note',date:'Jun 2, 2025',by:'CVega'});
+    note(s3,c2,{text:'Follow up on FOIA receipt',type:'Task',date:'Jun 10, 2026',by:'AReyes',due:'Jun 25, 2026'});
+
+    return {rooms, eventsByRoom:byRoom};
+  }
 
   // Workspaces = the encrypted rooms this user is a member of. Membership is the
   // access model: a teammate sees only the workspaces they've been invited to.
   loadWorkspaces(){
     try{
-      const rooms=(this.ML().listRooms&&this.ML().listRooms())||[];
+      const rooms=this.demo ? this._demoRooms.slice() : ((this.ML().listRooms&&this.ML().listRooms())||[]);
       this.workspaces=rooms.map(r=>({roomId:r.roomId||r.id,name:r.name||r.roomId||'Workspace'}));
       if((!this.curWs||!this.workspaces.some(w=>w.roomId===this.curWs))&&this.workspaces[0]) this.curWs=this.workspaces[0].roomId;
       this.refold();
     }catch(e){ this.forceUpdate(); }
   }
-  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm'}); this.refold(); }
-  async createWorkspace(){
-    const name=(typeof prompt==='function')&&prompt('New workspace name'); if(!name) return;
-    try{ await this.whenLive(); const id=await this.ML().createRoom(name); await this.seedSchema(id); this.loadWorkspaces(); if(id) this.selectWorkspace(id); }
+  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); this.refold(); }
+  async createWorkspace(nameArg){
+    const name=(typeof nameArg==='string'&&nameArg.trim())?nameArg.trim():((typeof prompt==='function')&&prompt('New workspace name')); if(!name) return;
+    if(this.demo){
+      const id='!amino_'+Math.random().toString(36).slice(2,8);
+      this._demoRooms.push({roomId:id,name}); this._demoEvents[id]=[];
+      await this.seedSchema(id); this.saveDemo();
+      this.loadWorkspaces(); this.selectWorkspace(id); this.setState({newSpaceName:''});
+      return;
+    }
+    try{ await this.whenLive(); const id=await this.ML().createRoom(name); await this.seedSchema(id); this.loadWorkspaces(); if(id) this.selectWorkspace(id); this.setState({newSpaceName:''}); }
     catch(e){ this.toast('Could not create workspace: '+((e&&e.message)||e)); }
   }
   async inviteTeammate(){
     if(!this.curWs){ this.toast('Open a workspace first.'); return; }
+    if(this.demo){ this.toast('Inviting teammates needs a live homeserver. Sign in to app.aminoimmigration.com to invite collaborators.'); return; }
     const mxid=(typeof prompt==='function')&&prompt('Invite a teammate by Matrix ID — e.g. @sam:aminoimmigration.com'); if(!mxid) return;
     try{ await this.ML().inviteUser(this.curWs,mxid.trim()); this.toast('Invited '+mxid.trim()); }
     catch(e){ this.toast('Invite failed: '+((e&&e.message)||e)); }
   }
   // schema-as-log: declare the entity field set so any cooperating client renders it.
-  async seedSchema(roomId){ try{ const ME=this.ME(); await this.ML().emit(roomId, ME.OP.DEF, { anchor:null, path:'_schema.tables', value:['client','case','note'] }); }catch(e){} }
+  async seedSchema(roomId){ try{ await this.emitOp(roomId, this.ME().OP.DEF, { anchor:null, path:'_schema.tables', value:['client','case','note'] }); }catch(e){} }
   toast(m){ try{ if(typeof alert==='function') alert(m); else console.log(m); }catch(e){ console.log(m); } }
 
   // state = fold(timeline). Rebuild the projected client list from the current
@@ -138,7 +237,7 @@ class Component extends DCLogic {
   refold(){
     if(!this.curWs||!window.MatrixEngine||!window.MatrixLive){ this.forceUpdate(); return; }
     try{
-      const events=this.ML().getEventsForRoom(this.curWs)||[];
+      const events=this.eventsFor(this.curWs);
       const state=this.ME().fold(events);
       this.clients=this.buildClients(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
@@ -166,9 +265,9 @@ class Component extends DCLogic {
     const family=(typeof prompt==='function')&&prompt('New client — Family name'); if(family===null) return;
     try{
       const ME=this.ME(), room=this.curWs;
-      const anchor=await this.ML().emit(room, ME.OP.INS, { entity_type:'client', payload:{} });
-      if(first)  await this.ML().emit(room, ME.OP.DEF, { anchor, path:'First Name',  value:first });
-      if(family) await this.ML().emit(room, ME.OP.DEF, { anchor, path:'Family Name', value:family });
+      const anchor=await this.emitOp(room, ME.OP.INS, { entity_type:'client', payload:{} });
+      if(first)  await this.emitOp(room, ME.OP.DEF, { anchor, path:'First Name',  value:first });
+      if(family) await this.emitOp(room, ME.OP.DEF, { anchor, path:'Family Name', value:family });
       this.refold();
     }catch(e){ this.toast('Could not add client: '+((e&&e.message)||e)); }
   }
@@ -177,7 +276,7 @@ class Component extends DCLogic {
     const t=(this.state.noteDraft||'').trim(); if(!t) return;
     const ci=this.state.cur, c=this.clients[ci];
     if(!c||!c.anchor||!this.curWs){ this.setState({noteDraft:''}); return; }
-    try{ const ME=this.ME(); await this.ML().emit(this.curWs, ME.OP.INS, { entity_type:'note', payload:{ client:c.anchor, text:t, type:'Note', date:'just now' } }); }catch(e){}
+    try{ await this.emitOp(this.curWs, this.ME().OP.INS, { entity_type:'note', payload:{ client:c.anchor, text:t, type:'Note', date:'just now' } }); }catch(e){}
     this.setState(s=>({extraNotes:Object.assign({},s.extraNotes,{[ci]:[t].concat(s.extraNotes[ci]||[])}),noteDraft:''})); this.refold(); }
 
   layoutVM(id){
@@ -193,7 +292,7 @@ class Component extends DCLogic {
   label(k){ return {'A#':'A#','Client_Photo':'Client Photo','PP':'Practice Panther','box_shared_link':'box link','USCIS FOIA':'USCIS FOIA','Client Name':'Client Name'}[k]||k; }
   age(mdy){ const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(mdy||''); if(!m)return '—'; const d=new Date(+m[3],+m[1]-1,+m[2]); const n=new Date(2026,5,13); let a=n.getFullYear()-d.getFullYear(); if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--; return String(a); }
   rawVal(ci,k){ const S=this.state, ov=S.vals[ci+'::'+k]; if(ov!==undefined)return ov; const c=this.clients[ci]; if(!c)return ''; if(k==='Age')return this.age(c.f['DOB']); if(k==='Client Name')return (c.f['Family Name']||'')+', '+(c.f['First Name']||''); return c.f[k]; }
-  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ const ME=this.ME(); await this.ML().emit(this.curWs, ME.OP.DEF, { anchor:c.anchor, path:k, value:v }); }catch(e){} }
+  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ await this.emitOp(this.curWs, this.ME().OP.DEF, { anchor:c.anchor, path:k, value:v }); if(this.demo) this.refold(); }catch(e){} }
   curLayout(){ return this.state.layouts[this.state.layout]; }
   mutate(fn){ this.setState(s=>{ const L=JSON.parse(JSON.stringify(s.layouts)); fn(L[s.layout]); return {layouts:L}; }); }
 
@@ -282,7 +381,14 @@ class Component extends DCLogic {
 
   renderVals(){
     const S=this.state;
-    const isCrm=S.view==='crm', isDb=S.view==='db';
+    const isCrm=S.view==='crm', isDb=S.view==='db', isSpaces=S.view==='spaces';
+    // Spaces launchpad — what you land on after sign-in: a card per workspace
+    // (each an encrypted room / demo space), folded just enough to show a count.
+    const myLocal=(S.session&&S.session.userId)?String(S.session.userId).replace(/^@/,'').split(':')[0]:'';
+    let spaceCards=[];
+    if(isSpaces){
+      spaceCards=this.workspaces.map(w=>{ let cnt=''; try{ cnt=String(this.buildClients(this.ME().fold(this.eventsFor(w.roomId))).length); }catch(e){ cnt=''; } const [bg,fg]=this.colorFor(w.name); return {roomId:w.roomId,name:w.name,initials:(w.name.trim()[0]||'W').toUpperCase(),av:fg,avBg:bg,count:cnt,onEnter:()=>this.selectWorkspace(w.roomId)}; });
+    }
     const q=S.search.trim().toLowerCase();
     const clientList=this.clients.filter(c=>!q||(c.f['Family Name']+' '+c.f['First Name']).toLowerCase().includes(q)||c.f['A#'].toLowerCase().includes(q)).map(c=>{
       const on=c.id===S.cur, [cb,cf]=this.colorFor(c.f['Country']);
@@ -348,7 +454,20 @@ class Component extends DCLogic {
     }
 
     return {
-      isCrm,isDb,
+      isCrm,isDb,isSpaces,
+      // ── Spaces launchpad ──
+      spaceCards, spacesEmpty:spaceCards.length===0,
+      demoActive:this.demo,
+      spacesGreeting:myLocal?('Welcome, '+myLocal):'Welcome',
+      spacesTagline:this.demo
+        ? 'Exploring demo data — pick a workspace to open. Nothing leaves this browser.'
+        : (this.workspaces.length ? 'Pick a workspace to open, or start a new one.' : 'Create your first workspace to get started.'),
+      newSpaceName:S.newSpaceName,
+      onNewSpaceInput:(e)=>this.setState({newSpaceName:e.target.value}),
+      onNewSpaceKey:(e)=>{if(e.key==='Enter'){e.preventDefault();this.createWorkspace(S.newSpaceName);}},
+      onCreateSpace:()=>this.createWorkspace(S.newSpaceName),
+      onExploreDemo:()=>this.exploreDemo(),
+      onBackToSpaces:()=>this.backToSpaces(),
       railOpen:!S.railCollapsed, railClosed:S.railCollapsed, railW:S.railCollapsed?'62px':(S.railWidth+'px'), railCaret:S.railCollapsed?'caret-double-right':'caret-double-left', onToggleRail:()=>this.setState({railCollapsed:!S.railCollapsed}),
       onResizeStart:(e)=>{ e.preventDefault(); const sx=e.clientX, sw=S.railWidth; const move=(ev)=>{ let w=sw+(ev.clientX-sx); w=Math.max(190,Math.min(480,w)); this.setState({railWidth:w}); }; const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; document.body.style.cursor=''; }; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.body.style.userSelect='none'; document.body.style.cursor='col-resize'; },
       showClientList:isCrm&&!S.listCollapsed, showListReopen:isCrm&&S.listCollapsed, onToggleList:()=>this.setState({listCollapsed:!S.listCollapsed}), onOpenList:()=>this.setState({listCollapsed:false}),
@@ -374,7 +493,7 @@ class Component extends DCLogic {
       glanceFields:[{label:'Country',value:cc.f['Country']||'—'},{label:'Relief Sought',value:cc.f['Relief Sought']||'—'},{label:'Case Status',value:cc.f['Case Status']||'—'},{label:'Case Manager',value:cc.f['Case Manager']||'—'},{label:'Entry Date',value:cc.f['Entry Date']||'—'},{label:'Engagement',value:cc.f['Client Engagement Status']||'—'}],
       boxFolders:['Filings','Correspondence','Evidence','Contracts','Biometrics','Scans'],
       panelHome:!(S.panelView==='clients'&&isCrm), panelClients:(S.panelView==='clients'&&isCrm), onPanelHome:()=>this.setState({panelView:'home'}),
-      workspaceNav:this.workspaces.map(w=>{const on=this.curWs===w.roomId&&isCrm;return {name:w.name,icon:'identification-card',iw:on?'-bold':'',icolor:on?'#C2872B':'#8F95A0',bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',count:w.roomId===this.curWs?String(this.clients.length):'',hasCaret:false,onPick:()=>this.selectWorkspace(w.roomId)};}).concat([
+      workspaceNav:[{name:'All spaces',icon:'squares-four',iw:isSpaces?'-bold':'',icolor:isSpaces?'#C2872B':'#8F95A0',bg:isSpaces?'#FBF3E2':'transparent',color:isSpaces?'#8A5A14':'#46505B',weight:isSpaces?'700':'600',count:String(this.workspaces.length),hasCaret:false,onPick:()=>this.backToSpaces()}].concat(this.workspaces.map(w=>{const on=this.curWs===w.roomId&&isCrm;return {name:w.name,icon:'identification-card',iw:on?'-bold':'',icolor:on?'#C2872B':'#8F95A0',bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',count:w.roomId===this.curWs?String(this.clients.length):'',hasCaret:false,onPick:()=>this.selectWorkspace(w.roomId)};})).concat([
         {name:'New workspace',icon:'plus',iw:'',icolor:'#0F7048',bg:'transparent',color:'#0F7048',weight:'600',count:'',hasCaret:false,onPick:()=>this.createWorkspace()},
         {name:'Database',icon:'database',iw:isDb?'-bold':'',icolor:isDb?'#C2872B':'#8F95A0',bg:isDb?'#FBF3E2':'transparent',color:isDb?'#8A5A14':'#46505B',weight:isDb?'700':'500',count:String(this.clients.length),hasCaret:false,onPick:()=>this.setState({view:'db'})},
       ]),

@@ -21,11 +21,18 @@ immigration-firm UI + data model on top:
 - **Sign in = Matrix login.** The homeserver is hardcoded to
   `https://app.aminoimmigration.com`; the screen only asks for a Matrix ID +
   password. The password unlocks the user's own account and E2EE keys on the
-  device — there is no credential store and **no API keys to leak**.
-- **A workspace is a room.** On sign-in the app lists the encrypted rooms the
-  user belongs to (`MatrixLive.listRooms()`). **Membership is the access model**:
-  a teammate sees only the workspaces the admin has invited them to. There is **no
-  seed data** — every client, case and note is folded from a room's timeline.
+  device — there is no credential store and **no API keys to leak**. The same
+  screen also offers **Explore demo data** — a no-homeserver path that seeds a
+  few example workspaces locally so the app is fully explorable offline (nothing
+  leaves the browser; demo edits persist in `localStorage`).
+- **Pick a space on sign-in.** Signing in (or entering demo) lands on a
+  **spaces launchpad** that lists every workspace you can open as a card —
+  rather than dropping silently into one. **A workspace is a room**: live
+  workspaces are the encrypted rooms you belong to (`MatrixLive.listRooms()`),
+  and **membership is the access model** — a teammate sees only the workspaces
+  the admin invited them to. The live path has **no seed data** (every client,
+  case and note is folded from a room's timeline); only the demo path seeds
+  example spaces, through the very same fold.
 - **Every edit is one stored operator.** A field edit emits **`DEF`**
   (`anchor`, `path = <Field Name>`, `value`); a new client/note emits **`INS`**;
   a relationship emits **`CON`**. State is never stored — it is always
@@ -41,7 +48,10 @@ live re-folds.
 
 ## What you can do in the UI
 
-- Sign in against the firm homeserver (ID + password; homeserver pre-filled).
+- Sign in against the firm homeserver (ID + password; homeserver pre-filled),
+  or **Explore demo data** to load example workspaces locally (no homeserver).
+- **Pick a workspace** from the spaces launchpad shown right after sign-in;
+  return to it any time via **All spaces** (left rail).
 - Switch between **workspaces** (left rail) — each is an encrypted room.
 - **New workspace** (rail) and **Invite teammate** (toolbar) — `createRoom` +
   `inviteUser`. Inviting a teammate is what grants them access to that workspace.
