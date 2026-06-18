@@ -177,7 +177,7 @@ class Component extends DCLogic {
     this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -268,6 +268,8 @@ class Component extends DCLogic {
       if((!this.demo)&&this.state.wsSyncing&&this.workspaces.length>0) this.setState({wsSyncing:false});
       if((!this.demo)&&rooms.length===0){ try{ const ss=this.ML().getSyncStatus&&this.ML().getSyncStatus(); console.debug('[amino] no eo.workspace rooms discovered yet — sync phase:', ss&&ss.phase, '· session:', this.ML().getSession&&this.ML().getSession()); }catch(e){} }
       if((!this.curWs||!this.workspaces.some(w=>w.roomId===this.curWs))&&this.workspaces[0]) this.curWs=this.workspaces[0].roomId;
+      // First time we settle on a room, open (load+decrypt) it before folding.
+      if(!this.demo && this.curWs && this.curWs!==this._openedWs){ this.openCurrent(); return; }
       this.refold();
     }catch(e){ this.forceUpdate(); }
   }
@@ -292,7 +294,21 @@ class Component extends DCLogic {
     this.setState({wsSyncing:true});
     tick();
   }
-  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); this.refold(); }
+  selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); if(this.demo) this.refold(); else this.openCurrent(); }
+  // Load + decrypt the active room's event chain into the bridge BEFORE folding.
+  // getEventsForRoom() returns an EMPTY buffer until openRoom() runs (it reads the
+  // room's OPFS chain and syncs the server tail into memory) — so without this
+  // every live workspace folds to 0 records, which is exactly what "0 records · 0
+  // fields" was. openRoom dedupes (no-op if already open) and fires notify('events')
+  // as history/tail arrive → onLiveChange → loadWorkspaces → refold fills it in.
+  async openCurrent(){
+    const room=this.curWs;
+    if(this.demo||!room){ this.refold(); return; }
+    this._openedWs=room;
+    try{ if(this.ML().openRoom) await this.ML().openRoom(room); }
+    catch(e){ this._openedWs=null; console.warn('[amino] openRoom failed:', e); }
+    if(this.curWs===room) this.refold();
+  }
   async createWorkspace(nameArg){
     const name=(typeof nameArg==='string'&&nameArg.trim())?nameArg.trim():((typeof prompt==='function')&&prompt('New workspace name')); if(!name) return;
     if(this.demo){
@@ -682,6 +698,11 @@ class Component extends DCLogic {
       spaceList:this.workspaces.map(w=>{ const on=this.curWs===w.roomId&&isCrm; return {name:w.name,count:(w.roomId===this.curWs?String(this.clients.length):''),bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',icolor:on?'#C2872B':'#8F95A0',onPick:()=>{ this.setState({spacePickerOpen:false}); this.selectWorkspace(w.roomId); }}; }),
       onNewSpacePrompt:()=>{ this.setState({spacePickerOpen:false}); this.createWorkspace(); },
       dbNavBg:isDb?'#FBF3E2':'transparent', dbNavColor:isDb?'#8A5A14':'#46505B', dbNavWeight:isDb?'700':'500', dbNavIw:isDb?'-bold':'', dbNavIcolor:isDb?'#C2872B':'#8F95A0',
+      // Clients/Database segmented toggle — same workspace, two clearly-labeled
+      // views, so it's obvious which one you're in (active side is raised/white).
+      segCrmBg:isCrm?'#fff':'transparent', segCrmColor:isCrm?'#18202D':'#6B7682', segCrmWeight:isCrm?'700':'600', segCrmShadow:isCrm?'0 1px 2px rgba(16,24,40,.12)':'none', segCrmIw:isCrm?'-bold':'', segCrmIcolor:isCrm?'#C2872B':'#9aa3ad',
+      segDbBg:isDb?'#fff':'transparent', segDbColor:isDb?'#18202D':'#6B7682', segDbWeight:isDb?'700':'600', segDbShadow:isDb?'0 1px 2px rgba(16,24,40,.12)':'none', segDbIw:isDb?'-bold':'', segDbIcolor:isDb?'#C2872B':'#9aa3ad',
+      onShowCrm:()=>this.setState({view:'crm'}),
       railOpen:!S.railCollapsed, railClosed:S.railCollapsed, railW:S.railCollapsed?'62px':(S.railWidth+'px'), railCaret:S.railCollapsed?'caret-double-right':'caret-double-left', onToggleRail:()=>this.setState({railCollapsed:!S.railCollapsed}),
       onResizeStart:(e)=>{ e.preventDefault(); const sx=e.clientX, sw=S.railWidth; const move=(ev)=>{ let w=sw+(ev.clientX-sx); w=Math.max(190,Math.min(480,w)); this.setState({railWidth:w}); }; const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; document.body.style.cursor=''; }; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.body.style.userSelect='none'; document.body.style.cursor='col-resize'; },
       showClientList:isCrm&&!S.listCollapsed, showListReopen:isCrm&&S.listCollapsed, onToggleList:()=>this.setState({listCollapsed:!S.listCollapsed}), onOpenList:()=>this.setState({listCollapsed:false}),

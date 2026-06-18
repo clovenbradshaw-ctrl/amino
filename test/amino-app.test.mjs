@@ -90,6 +90,7 @@ c._liveState = ME.fold(timeline); c._renderState = ME.fold(timeline); // demo-li
 vm = c.renderVals();
 ok(vm.clients.length === 2, 'render: client list shows folded clients');
 ok(/Lopez|San Juan/.test(vm.cur.name), 'render: record panel header is a real client');
+ok(vm.segCrmWeight === '700' && vm.segDbWeight === '600', 'view toggle highlights Clients in the CRM view');
 
 // 3b) the Database view (only computed on the db screen) shows every real set
 c.state.view = 'db';
@@ -97,6 +98,7 @@ vm = c.renderVals();
 ok(vm.dbRows.length === 2, 'render: Database view shows folded rows');
 ok(vm.dbTabs.some((t) => t.name === 'client'), 'Database lists the real `client` set as a tab');
 ok(vm.dbColumns.some((col) => col.name === 'Family Name'), 'Database columns are the folded fields');
+ok(vm.segDbWeight === '700' && vm.segCrmWeight === '600', 'view toggle flips to Database in the db view');
 
 // 3c) opening a row populates the record drawer from the real entity
 c.state.dbRecord = { set: 'client', anchor: A };
@@ -168,5 +170,16 @@ ok(typeof vm5.onRefreshSpaces === 'function', 'syncing: a manual Refresh is avai
 c5.state.wsSyncing = false;             // sync window closed, still nothing found
 vm5 = c5.renderVals();
 ok(vm5.spacesSyncing === false && /Refresh/.test(vm5.spacesTagline), 'settled-empty: prompt to create or Refresh, not a bare "create your first"');
+
+// 6) entering a workspace must OPEN (load + decrypt) the room before folding.
+// Without openRoom(), getEventsForRoom() returns an empty buffer and the
+// workspace folds to 0 records — the "0 records · 0 fields" bug.
+let opened = null;
+const openBridge = Object.assign({}, authedBridge, { openRoom: async (id) => { opened = id; } });
+const c6 = new Component({});
+c6.ML = () => openBridge;
+c6.selectWorkspace('!ws1');
+await Promise.resolve();
+ok(opened === '!ws1', 'selectWorkspace opens (loads+decrypts) the room before folding');
 
 console.log(`\namino-app.test: ${pass} assertions passed`);
