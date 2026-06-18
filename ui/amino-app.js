@@ -84,7 +84,7 @@ class Component extends DCLogic {
     // not the old fixed three-table map. booting — the cold-boot resume flag
     // from PR #32's duplicate-login fix. Both kept.
     this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
-      connected:false, connecting:false, booting:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
+      connected:false, connecting:false, booting:false, wsSyncing:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live changes, and adopt a restored
     // session. The foundation auto-unlocks a prior login on cold start, but that
@@ -123,7 +123,7 @@ class Component extends DCLogic {
       const sess=(ML.getSession&&ML.getSession())||{};
       this.demo=false;
       this.setState({connected:true,demo:false,booting:false,connecting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||''},view:'spaces'});
-      this.loadWorkspaces();
+      this.pollWorkspaces();
     }
     return true;
   }
@@ -162,7 +162,7 @@ class Component extends DCLogic {
       // Land on the spaces launchpad — let the user pick which workspace to open
       // instead of dropping silently into the first one.
       this.setState({connected:true,demo:false,connecting:false,booting:false,session:{homeserver:this.HOMESERVER,userId:sess.mxid||sess.userId||u},loginPass:'',view:'spaces'});
-      this.loadWorkspaces();
+      this.pollWorkspaces();
     }catch(e){ this.setState({connecting:false,loginErr:(e&&e.message)||'Sign-in failed.'}); }
   }
   // Explore demo data without a homeserver — seeds a handful of immigration
@@ -177,7 +177,7 @@ class Component extends DCLogic {
     this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,loginPass:'',cur:0,view:'crm'}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm'}); }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -265,9 +265,32 @@ class Component extends DCLogic {
     try{
       const rooms=this.demo ? this._demoRooms.slice() : ((this.ML().listRooms&&this.ML().listRooms())||[]);
       this.workspaces=rooms.map(r=>({roomId:r.roomId||r.id,name:r.name||r.roomId||'Workspace'}));
+      if((!this.demo)&&this.state.wsSyncing&&this.workspaces.length>0) this.setState({wsSyncing:false});
+      if((!this.demo)&&rooms.length===0){ try{ const ss=this.ML().getSyncStatus&&this.ML().getSyncStatus(); console.debug('[amino] no eo.workspace rooms discovered yet — sync phase:', ss&&ss.phase, '· session:', this.ML().getSession&&this.ML().getSession()); }catch(e){} }
       if((!this.curWs||!this.workspaces.some(w=>w.roomId===this.curWs))&&this.workspaces[0]) this.curWs=this.workspaces[0].roomId;
       this.refold();
     }catch(e){ this.forceUpdate(); }
+  }
+  // After a live sign-in the Matrix initial sync can deliver rooms AFTER the
+  // launchpad first renders. The bridge fires notify('rooms') as they arrive
+  // (→ onLiveChange → loadWorkspaces), but to be robust against a slow or missed
+  // sync we ALSO actively re-list for a short window — so a real workspace can't
+  // sit invisible behind a premature "create your first workspace." Shows a
+  // syncing state until rooms appear or the window closes; Refresh re-arms it.
+  pollWorkspaces(){
+    if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; }
+    if(this.demo){ this.loadWorkspaces(); return; }
+    const deadline=Date.now()+25000;
+    const tick=()=>{
+      this._wsPollTimer=null;
+      if(this.demo||!this.state.connected) return;            // signed out / switched to demo
+      this.loadWorkspaces();
+      if(this.workspaces.length>0){ if(this.state.wsSyncing) this.setState({wsSyncing:false}); return; }
+      if(Date.now()>=deadline){ this.setState({wsSyncing:false}); return; }
+      this._wsPollTimer=setTimeout(tick,1500);
+    };
+    this.setState({wsSyncing:true});
+    tick();
   }
   selectWorkspace(roomId){ this.curWs=roomId; this.setState({cur:0,ef:null,view:'crm',dbRecord:null}); this.refold(); }
   async createWorkspace(nameArg){
@@ -636,10 +659,16 @@ class Component extends DCLogic {
       // ── Spaces launchpad ──
       spaceCards, spacesEmpty:spaceCards.length===0,
       demoActive:this.demo,
+      // While the initial Matrix sync is still landing rooms, say so (and keep
+      // Refresh available) instead of claiming there are none yet.
+      spacesSyncing:(!this.demo&&S.wsSyncing&&spaceCards.length===0),
+      onRefreshSpaces:()=>this.pollWorkspaces(),
       spacesGreeting:myLocal?('Welcome, '+myLocal):'Welcome',
       spacesTagline:this.demo
         ? 'Exploring demo data — pick a workspace to open. Nothing leaves this browser.'
-        : (this.workspaces.length ? 'Pick a workspace to open, or start a new one.' : 'Create your first workspace to get started.'),
+        : ((S.wsSyncing&&spaceCards.length===0)
+            ? 'Syncing your workspaces from app.aminoimmigration.com…'
+            : (this.workspaces.length ? 'Pick a workspace to open, or start a new one.' : 'No workspaces yet — create one, or Refresh if you expect existing spaces to appear.')),
       newSpaceName:S.newSpaceName,
       onNewSpaceInput:(e)=>this.setState({newSpaceName:e.target.value}),
       onNewSpaceKey:(e)=>{if(e.key==='Enter'){e.preventDefault();this.createWorkspace(S.newSpaceName);}},

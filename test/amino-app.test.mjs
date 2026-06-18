@@ -154,4 +154,19 @@ c4.onLiveChange();                      // bridge notifies its subscribers
 ok(c4.state.connected === true, 'resume race: the subscriber adopts the session once it lands');
 ok(c4.state.view === 'spaces', 'resume race: adopted session opens the launchpad');
 
+// 5) workspace sync state — a fresh login's initial sync can land rooms AFTER
+// the launchpad first renders. While that's in flight we show a "syncing" state
+// (and keep Refresh) instead of prematurely claiming there are no spaces.
+const c5 = new Component({});
+c5.ML = () => authedBridge;
+c5.demo = false; c5.workspaces = []; c5.state.connected = true; c5.state.view = 'spaces';
+c5.state.wsSyncing = true;
+let vm5 = c5.renderVals();
+ok(vm5.spacesSyncing === true, 'syncing: launchpad shows a syncing state while rooms are still arriving');
+ok(/[Ss]yncing/.test(vm5.spacesTagline), 'syncing: tagline reflects the in-flight sync, not "no workspaces"');
+ok(typeof vm5.onRefreshSpaces === 'function', 'syncing: a manual Refresh is available');
+c5.state.wsSyncing = false;             // sync window closed, still nothing found
+vm5 = c5.renderVals();
+ok(vm5.spacesSyncing === false && /Refresh/.test(vm5.spacesTagline), 'settled-empty: prompt to create or Refresh, not a bare "create your first"');
+
 console.log(`\namino-app.test: ${pass} assertions passed`);
