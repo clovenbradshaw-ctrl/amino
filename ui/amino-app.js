@@ -86,7 +86,7 @@ class Component extends DCLogic {
     // an edit folds O(1) instead of re-folding the whole timeline. _renderVer
     // bumps whenever the projected render-state changes, so the Database grid can
     // memoize its (expensive) table build and skip it on idle re-renders.
-    this._foldCache={}; this._renderVer=0; this._importRowsVer=0; this._builtCache=null;
+    this._foldCache={}; this._renderVer=0; this._importRowsVer=0; this._builtCache=null; this._colCache=null;
     this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig='';
     // Database grid windowing — render only a bounded slice of rows into the DOM
     // (grows on scroll / "Load more"), so a 12k-row imported sheet can't explode
@@ -98,7 +98,7 @@ class Component extends DCLogic {
     // dbTable:'' / dbView:{} — the Database view is now set-driven (dbModel),
     // not the old fixed three-table map. booting — the cold-boot resume flag
     // from PR #32's duplicate-login fix. Both kept.
-    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, syncSnap:null, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
+    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, dbShowAllCols:false, syncSnap:null, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
       connected:false, connecting:false, booting:false, wsSyncing:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live changes, and adopt a restored
@@ -196,7 +196,7 @@ class Component extends DCLogic {
   disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } if(this._syncTimer){ clearTimeout(this._syncTimer); this._syncTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this._resetFoldCaches(); this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm',syncSnap:null}); }
   // Drop every cached fold + projection so a new session never reads a prior
   // session's (or a different namespace's) state. Cheap; the next fold rebuilds.
-  _resetFoldCaches(){ this._foldCache={}; this._builtCache=null; this._liveState=null; this._renderState=null; this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig=''; this._renderVer++; this._importRows={}; this._importRowsVer++; }
+  _resetFoldCaches(){ this._foldCache={}; this._builtCache=null; this._colCache=null; this._liveState=null; this._renderState=null; this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig=''; this._renderVer++; this._importRows={}; this._importRowsVer++; }
   backToSpaces(){ this.setState({view:'spaces',dbRecord:null}); }
 
   // ── demo store persistence (browser-local; no network) ──
@@ -622,6 +622,49 @@ class Component extends DCLogic {
     const fam=e['Family Name'], first=e['First Name'];
     if(fam||first) return (fam||'')+(fam&&first?', ':'')+(first||'');
     return String(e._anchor||'').slice(-8)||'—'; }
+  // Airtable gives every table ONE primary field that leads the grid and is the
+  // record's display name. Find it so the leading "Name" column shows it ONCE —
+  // a table whose first field is literally "Name"/"Matter" used to render two
+  // identical columns (the synthetic primary + the real field). Prefer a declared
+  // schema primary, else the first common label field that's actually present.
+  primaryFieldName(activeName,cols,state){
+    const names=new Set(cols.map(c=>c.name));
+    const sp=state&&state.schema&&state.schema.primary&&state.schema.primary[activeName];
+    if(sp&&names.has(sp)) return sp;
+    for(const cand of ['Name','Title','Matter','Client Name','Full Name','Display Name','name','title']) if(names.has(cand)) return cand;
+    return null; }
+  // The leading cell's text: the primary field's own value when there is one,
+  // otherwise the cross-shape rowLabel (e.g. "Family, First" for a client).
+  primaryLabel(e,primaryName){
+    if(primaryName){ const v=e[primaryName];
+      if(v!=null&&v!==''&&!(Array.isArray(v)&&!v.length)) return Array.isArray(v)?v.join(', '):String(v); }
+    return this.rowLabel(e); }
+  // Stable column order with empty columns sunk to the end. An imported Airtable
+  // base can carry hundreds of fields, most blank for any given view; leading the
+  // grid with the columns that actually hold data (sampling the set, so it stays
+  // cheap) is what keeps a 300-field table from opening on a wall of "—".
+  orderColsEmptyLast(cols,rows){
+    if(!rows||rows.length<2||cols.length<2) return cols;
+    const sample=rows.length>250?rows.slice(0,250):rows;
+    const populated=new Set();
+    for(const c of cols){ for(const r of sample){ const v=r[c.name]; if(v!=null&&v!==''&&!(Array.isArray(v)&&!v.length)){ populated.add(c.name); break; } } }
+    if(populated.size===0||populated.size===cols.length) return cols;
+    const head=[],tail=[]; for(const c of cols) (populated.has(c.name)?head:tail).push(c);
+    return head.concat(tail); }
+  // The grid's column layout: the leading primary column + the data columns
+  // (primary de-duped, empty-last, capped unless "show all fields" is on), plus
+  // the matching grid-template track string. Independent of row windowing/search,
+  // so dbModel memoizes it (this._colCache) across keystrokes.
+  buildColumns(activeName,built,state,showAll){
+    const cols=built.cols, rows=built.rows;
+    const primaryName=this.primaryFieldName(activeName,cols,state);
+    const dataCols=this.orderColsEmptyLast(cols.filter(c=>c.name!==primaryName),rows);
+    const MAXCOLS=30, cap=showAll?dataCols.length:MAXCOLS;
+    const shown=dataCols.slice(0,cap), hiddenCols=dataCols.length-shown.length;
+    const columns=[{k:'__name',n:primaryName||'Name',icon:'text-aa',type:'name'}]
+      .concat(shown.map(c=>({k:c.name,n:c.name,icon:this.iconForType(c.type),type:c.type})));
+    const dbColTemplate=columns.map((c,i)=> i===0?'minmax(210px,1.4fr)':((c.type==='longtext'||c.type==='json')?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
+    return {columns,dbColTemplate,primaryName,hiddenCols,fieldCount:cols.length,dataColCount:dataCols.length}; }
 
   // ── Database grid windowing plumbing ──
   // One capture-phase scroll listener on the document catches the grid scroll
@@ -662,7 +705,7 @@ class Component extends DCLogic {
     if(!activeName) return empty;
     const tabs=sets.map(s=>{ const on=s.name===activeName; return {name:s.name,icon:this.iconForSet(s.name),count:String(s.expected||s.localRows||0),
       bg:on?'#fff':'transparent',underline:on?'#C2872B':'transparent',color:on?'#18202D':'#6B7682',weight:on?'700':'500',icolor:on?'#C2872B':'#9aa3ad',
-      onPick:()=>{ this._scrollGridTop(); this.setState({dbTable:s.name,dbSearch:'',dbRecord:null,dbLimit:this.DB_PAGE}); }}; });
+      onPick:()=>{ this._scrollGridTop(); this.setState({dbTable:s.name,dbSearch:'',dbRecord:null,dbLimit:this.DB_PAGE,dbShowAllCols:false}); }}; });
     // Building the full table (every row materialized from the augmented state)
     // is the costly part, so memoize it: it only changes when the render-state or
     // the raw fold changes, NOT when the user types in search or scrolls. Keyed
@@ -672,9 +715,14 @@ class Component extends DCLogic {
     let built;
     if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
     else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
-    const cols=built.cols, rows=built.rows;
-    const MAXCOLS=12, shown=cols.slice(0,MAXCOLS);
-    const columns=[{k:'__name',n:'Name',icon:'text-aa',type:'name'}].concat(shown.map(c=>({k:c.name,n:c.name,icon:this.iconForType(c.type),type:c.type})));
+    const rows=built.rows;
+    // Column layout (primary + data columns, ordered/capped) — memoized on the
+    // same build, keyed also on the "show all fields" toggle.
+    const layoutKey=builtKey+'|'+(S.dbShowAllCols?1:0);
+    let layout;
+    if(this._colCache&&this._colCache.key===layoutKey) layout=this._colCache.val;
+    else { layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols); this._colCache={key:layoutKey,val:layout}; }
+    const columns=layout.columns, primaryName=layout.primaryName;
     const dq=S.dbSearch.trim().toLowerCase();
     const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
     // Window the rows: only a bounded slice is turned into cell view-models and
@@ -685,15 +733,22 @@ class Component extends DCLogic {
     const limit=Math.min(Math.max(this.DB_PAGE, S.dbLimit||this.DB_PAGE), total);
     const windowRows=total>limit?filtered.slice(0,limit):filtered;
     this._dbHasMore=total>windowRows.length;
-    const dbRows=windowRows.map(e=>{ const label=this.rowLabel(e); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
+    const dbRows=windowRows.map(e=>{ const label=this.primaryLabel(e,primaryName); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
     const moreCount=Math.min(300,total-windowRows.length);
-    const dbColTemplate=columns.map((c,i)=> i===0?'minmax(210px,1.4fr)':((c.type==='longtext'||c.type==='json')?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
+    const dbColTemplate=layout.dbColTemplate;
+    // Honest signal that the grid is capping a wide table, with the escape hatch
+    // to render every field (relies on the grid's own horizontal scroll).
+    const hiddenCols=layout.hiddenCols, canCollapse=!!S.dbShowAllCols&&layout.dataColCount>30;
     const active=sets.find(s=>s.name===activeName)||{};
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({
-      dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:cols.length,
+      dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
       dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows,
+      // Wide-table column controls: surface how many fields are hidden behind the
+      // cap and let the user expand to all fields (or collapse back).
+      dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),
+      dbCanCollapseCols:canCollapse, onDbShowAllCols:()=>this.setState({dbShowAllCols:true}), onDbHideExtraCols:()=>this.setState({dbShowAllCols:false}),
       // Windowing: show how many of how many, and a control to load the next page.
       dbHasMore:this._dbHasMore, dbShown:windowRows.length, dbTotal:total,
       dbMoreText:'Showing '+windowRows.length+' of '+total+' — load '+moreCount+' more',
