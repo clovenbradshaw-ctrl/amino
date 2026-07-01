@@ -382,6 +382,7 @@ class Component extends DCLogic {
         ? window.AminoDB.augmentState(state,this._importRows,window.AminoDB.activeImportAnchors(state))
         : state;
       this._renderVer++;
+      this._syncRowStore(state);
       this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
       if(!this.demo) this.materializeLive(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
@@ -470,12 +471,61 @@ class Component extends DCLogic {
           const st=this._liveState||state;
           this._renderState=DB.augmentState(st,this._importRows,DB.activeImportAnchors(st));
           this._renderVer++;
+          this._syncRowStore(st);
           this.clients=this.projectLive(st);
           let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
           this.setState({cur});
         });
     });
   }
+  // Mirror the newest generation of every imported set into the columnar row
+  // store (AminoRowStore) so the Database grid answers with query() — the
+  // O(window) path. Rebuilds each set from the already-materialized _importRows,
+  // grouped by derived_set across a set's active import chunks.
+  _syncRowStore(state){
+    const RS=window.AminoRowStore, DB=window.AminoDB;
+    if(!RS||!DB||this.demo||!this._importRows) return;
+    if(!this._rowStore) this._rowStore=RS.create();
+    const active=DB.activeImportAnchors(state), ents=(state&&state.entities)||{};
+    const bySet={};
+    for(const anchor in this._importRows){ if(!active.has(anchor)) continue; const imp=ents[anchor]; const set=imp&&imp.derived_set; if(!set) continue; (bySet[set]||(bySet[set]=[])).push.apply(bySet[set],this._importRows[anchor]); }
+    for(const set in bySet) this._rowStore.loadSet(set,bySet[set]);
+  }
+  // ── the Database view spec (the real toolbar) ── per-set { sort, group,
+  // filter, hidden } that compiles into AminoRowStore.query() params. Persisted
+  // per set name so switching tabs keeps each table's filter/sort/group/hide.
+  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {type:(s&&s.type)||'table',sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[],dateField:(s&&s.dateField)||null}; }
+  // A column is date-like if ≥70% of its sampled values parse as ISO-ish dates —
+  // how the calendar view finds its date field (inferType never labels 'date').
+  _looksDate(vals){ let ok=0,tot=0; for(const v of (vals||[])){ if(v==null||v==='') continue; tot++; const s=String(v); if(/\d{4}-\d{2}-\d{2}/.test(s)&&!isNaN(Date.parse(s))) ok++; } return tot>0&&ok/tot>=0.7; }
+  _patchSpec(set,patch){ this.setState(st=>{ const cur=(st.dbSpecs||{})[set]||{}; return {dbSpecs:Object.assign({},st.dbSpecs,{[set]:Object.assign({},cur,patch)}), dbLimit:this.DB_PAGE}; }); }
+  // Click a column header to cycle its sort: off → asc → desc → off (single-key;
+  // the query engine supports multi-key, exposed later).
+  _cycleSort(set,field){ const found=(this._dbSpec(set).sort||[]).find(s=>s.field===field), dir=found?found.dir:''; const next=dir===''?'asc':dir==='asc'?'desc':''; this._patchSpec(set,{sort:next?[{field,dir:next}]:[]}); }
+  _hideField(set,field){ const cur=this._dbSpec(set).hidden||[]; if(cur.indexOf(field)>=0) return; this._patchSpec(set,{hidden:cur.concat([field])}); }
+  // Filter button: toggle a "primary is not empty" clause (a real predicate over
+  // query()); the full per-type builder UI is the fast-follow.
+  _toggleFilter(set,primary){ if(this._dbSpec(set).filter){ this._patchSpec(set,{filter:null}); return; } if(!primary) return; this._patchSpec(set,{filter:{op:'and',clauses:[{field:primary,op:'isNotEmpty'}]}}); }
+  // Group button: cycle through the eligible (select/boolean) columns → off.
+  _cycleGroup(set,groupables){ const list=groupables||[]; if(!list.length){ this._patchSpec(set,{group:null}); return; } const cur=this._dbSpec(set).group&&this._dbSpec(set).group.field; const idx=(cur?list.indexOf(cur):-1)+1; const nextField=idx<list.length?list[idx]:null; this._patchSpec(set,{group:nextField?{field:nextField}:null}); }
+  // Switch the grid's view type; Kanban needs a group field, so auto-pick the
+  // first eligible column when none is set.
+  _setViewType(set,type,opts){ opts=opts||{}; const patch={type}, sp=this._dbSpec(set); if(type==='kanban'){ if((!sp.group||!sp.group.field)&&opts.groupables&&opts.groupables.length) patch.group={field:opts.groupables[0]}; } if(type==='calendar'){ if(!sp.dateField&&opts.dateables&&opts.dateables.length) patch.dateField=opts.dateables[0]; } this._patchSpec(set,patch); }
+  // ── saved views (Phase 4) ── a view is the spec, persisted as a schema-log
+  // DEF (anchor=null, path=_schema.views.<slug>) that folds into
+  // state.schema.views and syncs to every staff device — zero new infrastructure.
+  _slug(name){ return (String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'view'); }
+  _viewSpecFromSaved(v){ return {type:v.type||'table',sort:v.sort||[],group:v.group||null,filter:v.filter||null,hidden:v.hidden||[],dateField:v.dateField||null}; }
+  _specKey(s){ return JSON.stringify([s.type||'table',s.sort||[],s.group||null,s.filter||null,s.hidden||[],s.dateField||null]); }
+  iconForViewType(t){ return t==='kanban'?'kanban':t==='calendar'?'calendar-dots':t==='gallery'?'squares-four':'table'; }
+  // Emit the current spec as a named, shared view.
+  _saveView(set,name){ if(!name||!this.curWs) return; const sp=this._dbSpec(set); const value={name,set,type:sp.type,sort:sp.sort,group:sp.group,filter:sp.filter,hidden:sp.hidden,dateField:sp.dateField}; Promise.resolve(this.emitOp(this.curWs,this.ME().OP.DEF,{anchor:null,path:'_schema.views.'+this._slug(name),value})).then(()=>{ if(this.demo) this.scheduleRefold(); }).catch(()=>{}); }
+  _deleteView(set,slug){ if(!this.curWs) return; Promise.resolve(this.emitOp(this.curWs,this.ME().OP.DEF,{anchor:null,path:'_schema.views.'+slug,value:null})).then(()=>{ if(this.demo) this.scheduleRefold(); }).catch(()=>{}); }
+  _loadView(set,v){ this._patchSpec(set,this._viewSpecFromSaved(v)); }
+  _clearView(set){ this._patchSpec(set,{type:'table',sort:[],group:null,filter:null,hidden:[],dateField:null}); }
+  // A card's secondary line: the first populated field that isn't the title or
+  // the group field (kanban/gallery card subtitle).
+  _cardSub(e,primaryName,groupField){ for(const k in e){ if(k[0]==='_'||k===primaryName||k===groupField) continue; const v=e[k]; if(v==null||v===''||(Array.isArray(v)&&!v.length)) continue; return k+': '+(Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):String(v))); } return ''; }
   buildClients(state){
     const ents=state.entities||{}, notesByClient={};
     for(const a in ents){ const e=ents[a]; if(e._type==='note'){ const ci=e.client||e.ci; (notesByClient[ci]=notesByClient[ci]||[]).push({act:e.text||e.act||'',type:e.noteType||e.type||'Note',date:e.date||'',by:e.by||(String(e._sender||'').replace(/^@/,'').split(':')[0]),desc:e.desc||'',due:e.due||'',_ts:e._created||0}); } }
@@ -711,40 +761,131 @@ class Component extends DCLogic {
     // the raw fold changes, NOT when the user types in search or scrolls. Keyed
     // on those versions so search/scroll re-renders reuse it instead of rebuilding
     // a 12k-row table on every keystroke.
-    const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
-    let built;
-    if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
-    else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
-    const rows=built.rows;
-    // Column layout (primary + data columns, ordered/capped) — memoized on the
-    // same build, keyed also on the "show all fields" toggle.
-    const layoutKey=builtKey+'|'+(S.dbShowAllCols?1:0);
-    let layout;
-    if(this._colCache&&this._colCache.key===layoutKey) layout=this._colCache.val;
-    else { layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols); this._colCache={key:layoutKey,val:layout}; }
-    const columns=layout.columns, primaryName=layout.primaryName;
+    const active=sets.find(s=>s.name===activeName)||{};
+    const spec=this._dbSpec(activeName);
+    const hidden=spec.hidden||[];
     const dq=S.dbSearch.trim().toLowerCase();
-    const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
-    // Window the rows: only a bounded slice is turned into cell view-models and
-    // rendered into the DOM, so a huge sheet can't create tens of thousands of
-    // nodes and freeze/crash the tab. The window grows on scroll-to-bottom and via
-    // the "Load more" control (dbLimit), and resets when the table or search change.
-    const filtered=rows.filter(match), total=filtered.length;
-    const limit=Math.min(Math.max(this.DB_PAGE, S.dbLimit||this.DB_PAGE), total);
-    const windowRows=total>limit?filtered.slice(0,limit):filtered;
-    this._dbHasMore=total>windowRows.length;
+    const limit=Math.max(this.DB_PAGE,S.dbLimit||this.DB_PAGE);
+    // Every grid is answered by the query spine (docs/BUILD-PLAN.md). Imported
+    // sets use the persistent columnar store; native, event-sourced sets (small)
+    // load into a transient per-build store so filter / sort / group / hide are
+    // one uniform query() path — nothing here scans Object.values(state.entities).
+    // Filter/sort/group/hidden come from the per-set view spec (the real toolbar).
+    const RS=window.AminoRowStore;
+    const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
+    let qStore=null;
+    if(this._rowStore&&this._rowStore.has&&this._rowStore.has(activeName)&&active.isImport) qStore=this._rowStore;
+    else if(RS){
+      if(this._gridStore&&this._gridStore.key===builtKey) qStore=this._gridStore.store;
+      else { const base=DB.buildTable(activeName,state); const ts=RS.create(); ts.loadSet(activeName,base.rows); this._gridStore={key:builtKey,store:ts}; qStore=ts; }
+    }
+    const schemaFields=state.schema&&state.schema.fields&&state.schema.fields[activeName];
+    let built,windowRows,total,groups;
+    if(qStore){
+      const res=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,sort:spec.sort,group:spec.group,search:dq||undefined,offset:0,limit});
+      built={cols:res.cols,rows:res.rows}; windowRows=res.rows; total=res.total; groups=res.groups; this._dbHasMore=res.hasMore;
+    }else{ // no store engine available → last-resort raw path (kept for safety)
+      built=DB.buildTable(activeName,state); windowRows=built.rows.slice(0,limit); total=built.rows.length; this._dbHasMore=total>windowRows.length;
+    }
+    // Hidden fields drop out before layout; the rest are ordered/capped as before,
+    // then annotated with click-to-sort (cycles asc/desc/off) + a hide affordance.
+    const visibleCols=hidden.length?built.cols.filter(c=>hidden.indexOf(c.name)<0):built.cols;
+    const layout=this.buildColumns(activeName,{cols:visibleCols,rows:windowRows},state,!!S.dbShowAllCols);
+    const primaryName=layout.primaryName;
+    const dirOf=(f)=>{ const k=(spec.sort||[]).find(s=>s.field===f); return k?k.dir:''; };
+    const columns=layout.columns.map(col=>{
+      const f=(col.k==='__name')?primaryName:col.k, dir=f?dirOf(f):'';
+      return Object.assign({},col,{ sortIcon: dir==='asc'?'arrow-up':dir==='desc'?'arrow-down':'',
+        onSort: f?(()=>this._cycleSort(activeName,f)):(()=>{}),
+        onHide: (f&&col.k!=='__name')?(()=>this._hideField(activeName,f)):null });
+    });
     const dbRows=windowRows.map(e=>{ const label=this.primaryLabel(e,primaryName); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
     const moreCount=Math.min(300,total-windowRows.length);
     const dbColTemplate=layout.dbColTemplate;
     // Honest signal that the grid is capping a wide table, with the escape hatch
     // to render every field (relies on the grid's own horizontal scroll).
     const hiddenCols=layout.hiddenCols, canCollapse=!!S.dbShowAllCols&&layout.dataColCount>30;
-    const active=sets.find(s=>s.name===activeName)||{};
-    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
+    // Toolbar → query() params. Sort + hide are set from the column headers; these
+    // buttons reflect state and reset. Filter toggles a primary-not-empty clause;
+    // Group cycles the eligible select/boolean columns → group counts.
+    const groupables=built.cols.filter(c=>c.type==='select'||c.type==='boolean').map(c=>c.name);
+    const dateables=built.cols.filter(c=>c.type==='date'||this._looksDate(windowRows.map(r=>r[c.name]))).map(c=>c.name);
+    const groupField=(spec.group&&spec.group.field)||'';
+    // Precompute the button styling (dc-runtime binds property paths, not
+    // expressions — no ternaries in the template).
+    const tool=(icon,label,active,onClick)=>({icon,label,active,onClick,bg:active?'#FBF3E2':'transparent',color:active?'#8A5A14':'#5A5D63',weight:active?'700':'500'});
+    const dbTools=[
+      tool('eye-slash',hidden.length?('Fields · '+hidden.length+' hidden'):'Hide fields',hidden.length>0,()=>this._patchSpec(activeName,{hidden:[]})),
+      tool('funnel-simple',spec.filter?'Filter · 1':'Filter',!!spec.filter,()=>this._toggleFilter(activeName,primaryName)),
+      tool('arrows-down-up',(spec.sort&&spec.sort.length)?('Sort · '+spec.sort.length):'Sort',!!(spec.sort&&spec.sort.length),()=>this._patchSpec(activeName,{sort:[]})),
+      tool('rows',groupField?('Group · '+groupField):'Group',!!groupField,()=>this._cycleGroup(activeName,groupables)),
+    ];
+    const dbGroups=(groupField&&groups)?groups.map(g=>({key:g.key||'—',count:String(g.count)})):[];
+    // View types (Phase 3): thin renderers over query(). Kanban = a windowed
+    // query() per group value. The switcher offers Kanban only when the set has a
+    // groupable (select/boolean) column.
+    const viewType=spec.type||'table';
+    const vtDef=[{key:'table',icon:'table',label:'Grid'}];
+    if(groupables.length||viewType==='kanban') vtDef.push({key:'kanban',icon:'kanban',label:'Kanban'});
+    if(dateables.length||viewType==='calendar') vtDef.push({key:'calendar',icon:'calendar-dots',label:'Calendar'});
+    vtDef.push({key:'gallery',icon:'squares-four',label:'Gallery'});
+    const dbViewTypes=vtDef.map(v=>({key:v.key,icon:v.icon,label:v.label,active:viewType===v.key,
+      bg:viewType===v.key?'#EDE7DA':'transparent',color:viewType===v.key?'#8A5A14':'#8F95A0',
+      onPick:()=>this._setViewType(activeName,v.key,{groupables,dateables})}));
+    let dbKanban={field:'',columns:[]};
+    if(viewType==='kanban'&&qStore){
+      const kf=(spec.group&&spec.group.field)||groupables[0]||'';
+      if(kf){
+        const gcounts=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,search:dq||undefined,group:{field:kf},limit:0}).groups||[];
+        const KCARDS=this.DB_PAGE; // window each column like the grid windows rows
+        dbKanban={field:kf,columns:gcounts.map(g=>{
+          const clause=g.key==='(empty)'?{field:kf,op:'isEmpty'}:{field:kf,op:'is',value:g.key};
+          const filt=spec.filter?{op:'and',clauses:[spec.filter,clause]}:clause;
+          const cres=DB.tableFromStore(qStore,activeName,schemaFields,{filter:filt,search:dq||undefined,sort:spec.sort,offset:0,limit:KCARDS});
+          const cards=cres.rows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,kf),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})}));
+          return {key:g.key||'—',count:String(g.count),cards,hasMore:g.count>cards.length,moreText:g.count>cards.length?('+'+(g.count-cards.length)+' more in this group'):''};
+        })};
+      }
+    }
+    // Calendar: rows laid out by day over a chosen date field (retires the
+    // hardcoded hearings/deadlines lists — a real view over NTA/Hearing/due-date).
+    let dbCalendar={field:'',days:[]};
+    if(viewType==='calendar'&&qStore){
+      const df=spec.dateField||dateables[0]||'';
+      if(df){
+        const cres=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,search:dq||undefined,sort:[{field:df,dir:'asc'}],offset:0,limit:this.DB_PAGE});
+        const byDay=new Map();
+        for(const e of cres.rows){ const t=Date.parse(e[df]); if(isNaN(t)) continue; const key=new Date(t).toISOString().slice(0,10); if(!byDay.has(key)) byDay.set(key,[]); byDay.get(key).push(e); }
+        const days=Array.from(byDay.keys()).sort().map(key=>({date:key,label:key,cards:byDay.get(key).map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,df),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})}))}));
+        dbCalendar={field:df,days};
+      }
+    }
+    const dbIsKanban=viewType==='kanban'&&dbKanban.columns.length>0;
+    const dbIsGallery=viewType==='gallery';
+    const dbIsCalendar=viewType==='calendar'&&dbCalendar.days.length>0;
+    const dbIsTable=!dbIsKanban&&!dbIsGallery&&!dbIsCalendar;
+    // Gallery: the grid's already-windowed query() rows, as cards — nearly free.
+    const dbGallery={cards: dbIsGallery ? windowRows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,''),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})})) : []};
+    // Saved views (Phase 4): read state.schema.views (folded from the schema-log)
+    // for this set; the active one is whichever matches the current spec.
+    const savedViews=(state.schema&&state.schema.views)||{};
+    const curKey=this._specKey(spec);
+    const savedList=Object.keys(savedViews).map(slug=>({slug,v:savedViews[slug]})).filter(x=>x.v&&x.v.set===activeName);
+    const anyActive=savedList.some(x=>this._specKey(this._viewSpecFromSaved(x.v))===curKey);
+    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:!anyActive?'#FBF3E2':'transparent',color:!anyActive?'#8A5A14':'#5A5D63',weight:!anyActive?'700':'500',active:!anyActive,count:String(total),onPick:()=>this._clearView(activeName)}]
+      .concat(savedList.map(x=>{ const act=this._specKey(this._viewSpecFromSaved(x.v))===curKey; return {name:x.v.name||x.slug,icon:this.iconForViewType(x.v.type),iw:'',icolor:act?'#C2872B':'#9aa3ad',bg:act?'#FBF3E2':'transparent',color:act?'#8A5A14':'#5A5D63',weight:act?'700':'500',active:act,count:'',onPick:()=>this._loadView(activeName,x.v),onDelete:()=>this._deleteView(activeName,x.slug)}; }))
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
+    const activeView=savedList.find(x=>this._specKey(this._viewSpecFromSaved(x.v))===curKey);
+    const onDbSaveView=()=>{ const nm=(typeof prompt==='function')?prompt('Name this view'):null; if(nm&&nm.trim()) this._saveView(activeName,nm.trim()); };
     return Object.assign({
       dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
-      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows,
+      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
+      // Grouping: the group-by field's counts as chips above the grid (kanban's
+      // substrate); empty when no grouping is active.
+      dbGrouped:!!groupField&&dbIsTable, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
+      // View types (Phase 3): the switcher + the kanban board (windowed query()
+      // per group). dbIsTable/dbIsKanban toggle the body; dbKanban carries columns.
+      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban, dbIsGallery, dbGallery, dbIsCalendar, dbCalendar,
       // Wide-table column controls: surface how many fields are hidden behind the
       // cap and let the user expand to all fields (or collapse back).
       dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),
@@ -756,8 +897,8 @@ class Component extends DCLogic {
       onDbMore:()=>this.setState(st=>({dbLimit:(st.dbLimit||this.DB_PAGE)+300})),
       dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value,dbLimit:this.DB_PAGE}),
       dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
-      dbViews:views, dbViewName:'All records', dbViewIcon:'table',
-      dbTools:[{icon:'eye-slash',label:'Hide fields'},{icon:'funnel-simple',label:'Filter'},{icon:'arrows-down-up',label:'Sort'},{icon:'rows',label:'Group'}],
+      dbViews:views, dbViewName:activeView?(activeView.v.name||activeView.slug):'All records', dbViewIcon:activeView?this.iconForViewType(activeView.v.type):'table', onDbSaveView,
+      dbTools,
     }, this.dbRecordModel(state, activeName));
   }
   // One grid cell for entity `e`, column `col`. i===0 is the synthetic primary

@@ -10279,7 +10279,7 @@
           <sc-for list="{{ dbViews }}" as="v" hint-placeholder-count="4">
             <button onclick="{{ v.onPick }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:{{ v.bg }};border:none;border-radius:7px;color:{{ v.color }};font-size:12.5px;font-weight:{{ v.weight }};cursor:pointer;text-align:left;margin-bottom:1px"><i class="ph{{ v.iw }} ph-{{ v.icon }}" style="font-size:15px;color:{{ v.icolor }}"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.name }}</span><span style="font-size:10px;color:#B6BBC2;font-variant-numeric:tabular-nums">{{ v.count }}</span><sc-if value="{{ v.active }}" hint-placeholder-val="{{ false }}"><i class="ph-bold ph-check" style="font-size:11px;color:#C2872B"></i></sc-if></button>
           </sc-for>
-          <button style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Create view</button>
+          <button onclick="{{ onDbSaveView }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Save current view</button>
         </div>
       </aside>
       </sc-if>
@@ -10288,16 +10288,74 @@
           <sc-if value="{{ viewsClosed }}" hint-placeholder-val="{{ false }}"><button onclick="{{ onOpenViews }}" title="Show views" style="width:28px;height:28px;border:1px solid #EDEFF2;border-radius:6px;background:#F8FAFC;color:#8F95A0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:5px"><i class="ph ph-caret-double-right" style="font-size:13px"></i></button></sc-if>
           <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#18202D;padding-right:6px"><i class="ph-bold ph-{{ dbViewIcon }}" style="color:#C2872B;font-size:14px"></i> {{ dbViewName }}</span>
           <span style="width:1px;height:18px;background:#E4E7EB;margin:0 5px"></span>
-          <sc-for list="{{ dbTools }}" as="tl" hint-placeholder-count="4"><button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;background:transparent;border:none;border-radius:6px;color:#5A5D63;font-size:12px;font-weight:500;cursor:pointer"><i class="ph ph-{{ tl.icon }}" style="font-size:14px"></i> {{ tl.label }}</button></sc-for>
+          <sc-for list="{{ dbTools }}" as="tl" hint-placeholder-count="4"><button onclick="{{ tl.onClick }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;background:{{ tl.bg }};border:none;border-radius:6px;color:{{ tl.color }};font-size:12px;font-weight:{{ tl.weight }};cursor:pointer"><i class="ph ph-{{ tl.icon }}" style="font-size:14px"></i> {{ tl.label }}</button></sc-for>
+          <span style="width:1px;height:18px;background:#E4E7EB;margin:0 5px"></span>
+          <sc-for list="{{ dbViewTypes }}" as="vt" hint-placeholder-count="2"><button onclick="{{ vt.onPick }}" title="{{ vt.label }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;background:{{ vt.bg }};border:none;border-radius:6px;color:{{ vt.color }};font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-{{ vt.icon }}" style="font-size:14px"></i> {{ vt.label }}</button></sc-for>
           <span style="flex:1"></span>
           <span style="font-size:11px;color:#8F95A0;font-weight:600;margin-right:9px;font-variant-numeric:tabular-nums;white-space:nowrap">{{ dbCountText }} records</span>
           <div style="display:flex;align-items:center;gap:7px;width:210px;background:#F5F6F7;border:1px solid #E4E7EB;border-radius:7px;padding:0 9px;height:30px"><i class="ph ph-magnifying-glass" style="color:#8F95A0;font-size:13px"></i><input value="{{ dbSearch }}" oninput="{{ onDbSearch }}" placeholder="Search records…" style="flex:1;background:transparent;border:none;outline:none;color:#18202D;font-size:12px;min-width:0"></div>
         </div>
+        <sc-if value="{{ dbGrouped }}" hint-placeholder-val="{{ false }}">
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 14px;background:#FBFBFA;border-bottom:1px solid #EFF1F4">
+            <span style="font-size:11px;font-weight:700;color:#8A5A14;white-space:nowrap">Grouped by {{ dbGroupField }}</span>
+            <sc-for list="{{ dbGroups }}" as="g" hint-placeholder-count="4"><span style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px;background:#F1F3F5;color:#46505B;white-space:nowrap">{{ g.key }} · {{ g.count }}</span></sc-for>
+            <button onclick="{{ onDbClearGroup }}" style="font-size:11px;color:#2747C9;background:none;border:none;cursor:pointer">Clear</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dbIsKanban }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-height:0;overflow:auto;display:flex;gap:12px;padding:14px;background:#F5F6F8;align-items:flex-start">
+            <sc-for list="{{ dbKanban.columns }}" as="kc" hint-placeholder-count="3">
+              <div style="flex:0 0 264px;max-width:264px;display:flex;flex-direction:column;background:#EEF0F3;border-radius:10px;max-height:100%">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font-size:12px;font-weight:700;color:#18202D"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kc.key }}</span><span style="font-size:11px;font-weight:600;color:#8F95A0;background:#fff;border-radius:99px;padding:1px 8px">{{ kc.count }}</span></div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;overflow:auto">
+                  <sc-for list="{{ kc.cards }}" as="kcard" hint-placeholder-count="4">
+                    <div onclick="{{ kcard.onOpen }}" style="background:#fff;border:1px solid #E7EAEE;border-radius:8px;padding:9px 11px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                      <div style="font-size:12.5px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kcard.title }}</div>
+                      <sc-if value="{{ kcard.sub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8A93A0;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kcard.sub }}</div></sc-if>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ kc.hasMore }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8F95A0;text-align:center;padding:4px">{{ kc.moreText }}</div></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dbIsGallery }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-height:0;overflow:auto;padding:14px;background:#F7F8FA">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+              <sc-for list="{{ dbGallery.cards }}" as="gc" hint-placeholder-count="6">
+                <div onclick="{{ gc.onOpen }}" style="background:#fff;border:1px solid #E7EAEE;border-radius:10px;padding:12px 13px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                  <div style="font-size:13px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ gc.title }}</div>
+                  <sc-if value="{{ gc.sub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:#8A93A0;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ gc.sub }}</div></sc-if>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ dbHasMore }}" hint-placeholder-val="{{ false }}"><div onclick="{{ onDbMore }}" style="text-align:center;padding:13px;color:#2747C9;font-size:12px;font-weight:700;cursor:pointer">{{ dbMoreText }}</div></sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dbIsCalendar }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-height:0;overflow:auto;padding:14px 16px;background:#F7F8FA">
+            <sc-for list="{{ dbCalendar.days }}" as="day" hint-placeholder-count="3">
+              <div style="margin-bottom:15px">
+                <div style="font-size:11px;font-weight:700;color:#8A5A14;margin-bottom:7px;letter-spacing:.03em">{{ day.label }}</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ day.cards }}" as="dcard" hint-placeholder-count="3">
+                    <div onclick="{{ dcard.onOpen }}" style="background:#fff;border:1px solid #E7EAEE;border-radius:8px;padding:9px 12px;cursor:pointer;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                      <span style="font-size:12.5px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dcard.title }}</span>
+                      <sc-if value="{{ dcard.sub }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#8A93A0;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dcard.sub }}</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dbIsTable }}" hint-placeholder-val="{{ true }}">
         <div class="am-sc" data-am-grid data-screen-label="{{ dbName }}" style="flex:1;min-height:0;overflow:auto">
       <div style="min-width:max-content">
         <div style="display:grid;grid-template-columns:{{ dbColTemplate }};position:sticky;top:0;z-index:5;background:#F1F3F5;border-bottom:1px solid #DDE2E7">
           <sc-for list="{{ dbColumns }}" as="c" hint-placeholder-count="6">
-            <div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-right:1px solid #E4E7EB;font-size:11.5px;font-weight:600;color:#46505B;overflow:hidden"><i class="ph ph-{{ c.icon }}" style="font-size:13px;color:#9aa3ad;flex-shrink:0"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span></div>
+            <div onclick="{{ c.onSort }}" title="Sort by {{ c.name }}" style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-right:1px solid #E4E7EB;font-size:11.5px;font-weight:600;color:#46505B;overflow:hidden;cursor:pointer"><i class="ph ph-{{ c.icon }}" style="font-size:13px;color:#9aa3ad;flex-shrink:0"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span><sc-if value="{{ c.hasSort }}" hint-placeholder-val="{{ false }}"><i class="ph ph-{{ c.sortIcon }}" style="font-size:11px;color:#C2872B;margin-left:auto;flex-shrink:0"></i></sc-if></div>
           </sc-for>
         </div>
         <sc-for list="{{ dbRows }}" as="r" hint-placeholder-count="10">
@@ -10319,6 +10377,7 @@
         </sc-if>
       </div>
       </div>
+        </sc-if>
       </div>
       </div>
   </div>

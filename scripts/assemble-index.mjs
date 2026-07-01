@@ -63,6 +63,17 @@ const html = `<!doctype html>
      buildTable / augmentState / listSets derivation, so the grid shows every
      imported set with real columns, rows, and relational links. -->
 <script src="db-data.js"></script>
+<!-- The query spine (window.AminoRowStore): a columnar per-set store with one
+     query() — filter/sort/group/search/hide-fields/pagination — that views and
+     the 1M-scale goal both ride on (docs/BUILD-PLAN.md, docs/SCALING.md). -->
+<script src="row-store.js"></script>
+<!-- Off-main-thread materializer (SCALING.md Phase 1): the pure parse+map
+     (window.AminoMaterialize, also loaded inside rows.worker.js via
+     importScripts) and its main-thread client (window.AminoRowsWorker) that
+     feeds the row store without freezing the tab. The worker itself
+     (rows.worker.js) is spawned at runtime, not script-included. -->
+<script src="rows-materialize.js"></script>
+<script src="rows-worker-client.js"></script>
 <script src="data-chat.js"></script>
 <!-- Design-component runtime: binds the <x-dc> template to the Component view-model -->
 <script src="dc-runtime.js"></script>

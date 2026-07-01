@@ -19,7 +19,9 @@ assert.ok(ME && ME.fold && ME.OP, 'MatrixEngine (fold engine) loaded');
 // import-row materializer + the Database data engine (window.AminoRows / AminoDB)
 new Function('window', fs.readFileSync('public/import-rows.js', 'utf8'))(globalThis);
 new Function('window', fs.readFileSync('public/db-data.js', 'utf8'))(globalThis);
+new Function('window', fs.readFileSync('public/row-store.js', 'utf8'))(globalThis);
 assert.ok(globalThis.AminoDB && globalThis.AminoDB.buildTable, 'AminoDB (db engine) loaded');
+assert.ok(globalThis.AminoRowStore && globalThis.AminoRowStore.create, 'AminoRowStore (query spine) loaded');
 
 // stub the live homeserver bridge — this test is about the fold/projection
 globalThis.MatrixLive = {
@@ -222,6 +224,38 @@ v8.onDbMore();
 v8 = c8.renderVals();
 ok(v8.dbRows.length === Math.min(250, c8.DB_PAGE + 300), 'windowing: Load more grows the window');
 
+// 8a) Store-backed grid — an IMPORTED set is served by the columnar query spine
+// (AminoRowStore.query), not Object.values(state.entities).filter. Proven by
+// putting the rows ONLY in the store (render state has just the import carrier,
+// NOT the rows) and confirming the grid still windows + searches all 300 — i.e.
+// the 1M memory win: import rows need not live in state.entities.
+const c8a = new Component({});
+const impA = ME.makeAnchor('import', { s: 'Client Info' }, '@a', 1);
+const impState = ME.fold([
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['Client Info'] }),
+  ev(ME.OP.INS, { anchor: impA, entity_type: 'import', payload: {} }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'derived_set', value: 'Client Info' }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'field_plan', value: [{ name: 'Family Name', csvIdx: 0, type: 'text' }] }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'rows_imported', value: 300 }),
+]);
+const impRows = [];
+for (let i = 0; i < 300; i++) impRows.push({ _anchor: impA + '#r' + i, _type: 'Client Info', 'Family Name': 'Fam' + i });
+c8a.curWs = '!ws1'; c8a.workspaces = [{ roomId: '!ws1', name: 'W' }];
+c8a.state.connected = true; c8a.state.view = 'db'; c8a.state.dbTable = 'Client Info';
+c8a._liveState = impState;
+c8a._renderState = impState;                 // rows are NOT in state.entities…
+c8a._importRows = { [impA]: impRows };
+c8a._syncRowStore(impState);                 // …only in the columnar store
+ok(c8a._rowStore && c8a._rowStore.count('Client Info') === 300, 'store: _syncRowStore mirrors the imported set (300 rows)');
+let v8a = c8a.renderVals();
+ok(v8a.dbTotal === 300 && v8a.dbHasMore === true, 'store grid: total + hasMore come from query() with rows only in the store');
+ok(v8a.dbRows.length === c8a.DB_PAGE, 'store grid: renders one windowed page, not all 300');
+ok(v8a.dbColumns.some((col) => col.name === 'Family Name'), 'store grid: columns derived from the store');
+c8a.state.dbSearch = 'fam299';
+v8a = c8a.renderVals();
+ok(v8a.dbTotal === 1 && v8a.dbRows.length === 1, 'store grid: search is a windowed query() over the store');
+ok(v8a.dbRows[0].cells[0].text === 'Fam299', 'store grid: the matching row renders');
+
 // 8b) Column layout — Airtable/Softr fidelity. The grid leads with the table's
 // PRIMARY field, shown once (no synthetic-"Name" + real-"Name" duplicate), and a
 // wide imported base is capped with an honest "+N more fields" expander.
@@ -275,6 +309,146 @@ const cEmpty = mkDb('rec', [
 const vEmpty = cEmpty.renderVals();
 ok(vEmpty.dbColumns[1] && vEmpty.dbColumns[1].name === 'Zzz Filled', 'ordering: a populated column leads an empty one regardless of schema order');
 ok(vEmpty.dbColumns[vEmpty.dbColumns.length - 1].name === 'Aaa Empty', 'ordering: an always-empty column sinks to the end');
+
+// 8e) The toolbar is real — Sort / Filter / Group / Hide all compile into
+// AminoRowStore.query() params via the per-set view spec, on a native set routed
+// through a transient store. Drives the same handlers the template binds.
+const cTb = new Component({});
+const tbEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['client'] }) ];
+const seed = [
+  { Name: 'Lopez',  Status: 'Open',   Age: 40 },
+  { Name: 'Nguyen', Status: 'Open',   Age: 30 },
+  { Name: 'Adams',  Status: 'Closed', Age: 50 },
+  { Name: '',       Status: 'Open',   Age: 20 }, // blank primary → filtered out
+  { Name: 'Zimmer', Status: 'Closed', Age: 35 },
+];
+seed.forEach((r, i) => {
+  const a = ME.makeAnchor('client', { i }, '@a', i);
+  tbEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'client', payload: {} }));
+  for (const k of Object.keys(r)) if (r[k] !== '') tbEvents.push(ev(ME.OP.DEF, { anchor: a, path: k, value: r[k] }));
+});
+cTb.curWs = '!ws1'; cTb.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cTb.state.connected = true; cTb.state.view = 'db'; cTb.state.dbTable = 'client';
+const tbState = ME.fold(tbEvents);
+cTb._liveState = tbState; cTb._renderState = tbState;
+let vt = cTb.renderVals();
+ok(vt.dbTotal === 5, 'toolbar: native set routes through a transient store (5 rows)');
+ok(vt.dbTools.length === 4 && vt.dbTools[2].label === 'Sort', 'toolbar: Sort/Filter/Group/Hide buttons present');
+
+// Sort: click the primary ("Name") header → asc, then desc.
+const nameCol = vt.dbColumns[0];
+nameCol.onSort();
+vt = cTb.renderVals();
+ok(vt.dbColumns[0].sortIcon === 'arrow-up', 'sort: header click sets an asc indicator');
+ok(vt.dbRows[0].cells[0].text === 'Adams', 'sort: rows are ordered by the sorted field (asc)');
+vt.dbColumns[0].onSort();
+vt = cTb.renderVals();
+ok(vt.dbColumns[0].sortIcon === 'arrow-down' && vt.dbRows[0].cells[0].text === 'Zimmer', 'sort: a second click flips to desc');
+
+// Filter: the Filter button toggles a primary-not-empty clause via query().
+vt.dbTools[1].onClick();
+vt = cTb.renderVals();
+ok(vt.dbTotal === 4, 'filter: primary-not-empty drops the blank-Name row (query filter)');
+ok(vt.dbTools[1].active === true && vt.dbTools[1].label === 'Filter · 1', 'filter: the button reflects the active filter');
+vt.dbTools[1].onClick();
+vt = cTb.renderVals();
+ok(vt.dbTotal === 5, 'filter: toggling again clears it');
+
+// Group: the Group button cycles to the select column and returns counts.
+vt.dbTools[3].onClick();
+vt = cTb.renderVals();
+ok(vt.dbGrouped === true && vt.dbGroupField === 'Status', 'group: cycles to the eligible select column');
+const gmap = Object.fromEntries(vt.dbGroups.map(g => [g.key, g.count]));
+ok(gmap.Open === '3' && gmap.Closed === '2', 'group: query() returns per-group counts');
+
+// Hide: hide the Age column via its header affordance; the button reflects it.
+const ageCol = vt.dbColumns.find(c => c.name === 'Age');
+ageCol.onHide();
+vt = cTb.renderVals();
+ok(!vt.dbColumns.some(c => c.name === 'Age'), 'hide: a hidden field drops out of the columns');
+ok(vt.dbTools[0].label === 'Fields · 1 hidden', 'hide: the button reflects the hidden count');
+
+// 8f) Kanban (Phase 3) — a view type that is a windowed query() per group value.
+// cTb already has group = Status; switch to the kanban view via the switcher.
+const kanBtn = vt.dbViewTypes.find(v => v.key === 'kanban');
+ok(kanBtn, 'kanban: the view switcher offers Kanban when a groupable column exists');
+kanBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsKanban === true && vt.dbKanban.field === 'Status', 'kanban: switches to a board grouped by the select column');
+const kmap = Object.fromEntries(vt.dbKanban.columns.map(c => [c.key, c.cards.length]));
+ok(kmap.Open === 3 && kmap.Closed === 2, 'kanban: each column is a windowed query() of its group');
+ok(vt.dbKanban.columns[0].key === 'Open' && typeof vt.dbKanban.columns[0].cards[0].title === 'string', 'kanban: columns carry counts + cards with titles');
+const gridBtn = vt.dbViewTypes.find(v => v.key === 'table');
+gridBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsTable === true && vt.dbIsKanban === false, 'kanban: switch back to the grid view');
+
+// 8g) Gallery — the grid's windowed query() rows as cards (nearly free).
+const galBtn = vt.dbViewTypes.find(v => v.key === 'gallery');
+ok(galBtn, 'gallery: the switcher offers Gallery');
+galBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsGallery === true && vt.dbIsTable === false, 'gallery: switches to the card layout');
+ok(vt.dbGallery.cards.length === 5 && typeof vt.dbGallery.cards[0].title === 'string', 'gallery: one card per windowed query() row');
+
+// 8h) Calendar — rows laid out by day over a detected date field.
+const cCal = new Component({});
+const calEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['case'] }) ];
+[['A', '2026-03-01'], ['B', '2026-03-01'], ['C', '2026-04-15']].forEach(([name, d], i) => {
+  const a = ME.makeAnchor('case', { i }, '@a', i);
+  calEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'case', payload: {} }));
+  calEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Name', value: name }));
+  calEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Hearing', value: d }));
+});
+cCal.curWs = '!ws1'; cCal.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cCal.state.connected = true; cCal.state.view = 'db'; cCal.state.dbTable = 'case';
+const calState = ME.fold(calEvents);
+cCal._liveState = calState; cCal._renderState = calState;
+let vc = cCal.renderVals();
+const calBtn = vc.dbViewTypes.find(v => v.key === 'calendar');
+ok(calBtn, 'calendar: the switcher offers Calendar when a date field is detected');
+calBtn.onPick();
+vc = cCal.renderVals();
+ok(vc.dbIsCalendar === true && vc.dbCalendar.field === 'Hearing', 'calendar: lays out over the detected date field');
+ok(vc.dbCalendar.days.length === 2, 'calendar: rows bucket into distinct days');
+ok(vc.dbCalendar.days[0].date === '2026-03-01' && vc.dbCalendar.days[0].cards.length === 2, 'calendar: the first day holds its two records, sorted by date');
+
+// 8i) Saved views (Phase 4) — the current spec persists as a schema-log DEF
+// (_schema.views.<slug>) that folds into state.schema.views and drives the rail.
+const cV = new Component({});
+const vEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['client'] }) ];
+['Lopez', 'Nguyen'].forEach((nm, i) => {
+  const a = ME.makeAnchor('client', { i }, '@a', i);
+  vEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'client', payload: {} }));
+  vEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Name', value: nm }));
+});
+cV.curWs = '!ws1'; cV.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cV.state.connected = true; cV.state.view = 'db'; cV.state.dbTable = 'client';
+const vState = ME.fold(vEvents);
+cV._liveState = vState; cV._renderState = vState;
+
+// Save the current spec (a sort) → a schema-log DEF at _schema.views.<slug>.
+let emitted = null;
+cV.emitOp = (room, op, content) => { emitted = { room, op, content }; return Promise.resolve('a'); };
+cV._patchSpec('client', { sort: [{ field: 'Name', dir: 'asc' }] });
+cV._saveView('client', 'Open Asylum');
+ok(emitted && emitted.content.path === '_schema.views.open-asylum', 'save: emits a schema-log DEF at _schema.views.<slug>');
+ok(emitted.content.anchor === null && emitted.content.value.set === 'client' && emitted.content.value.sort[0].field === 'Name',
+   'save: the DEF carries the spec + set (folds into state.schema.views, syncs to staff)');
+
+// A folded saved view drives the rail; picking it applies the spec.
+cV._renderState = Object.assign({}, vState, { schema: Object.assign({}, vState.schema, {
+  views: { 'open-asylum': { name: 'Open Asylum', set: 'client', type: 'table', sort: [{ field: 'Name', dir: 'desc' }], group: null, filter: null, hidden: [], dateField: null } },
+}) });
+cV._clearView('client');
+let vv = cV.renderVals();
+ok(vv.dbViews[0].active === true && vv.dbViews[0].name === 'All records', 'views: All records is active when the spec is unsaved');
+const savedRow = vv.dbViews.find(x => x.name === 'Open Asylum');
+ok(savedRow, 'views: a folded saved view appears in the rail for its set');
+savedRow.onPick();
+vv = cV.renderVals();
+ok(cV._dbSpec('client').sort[0].dir === 'desc', 'views: picking a saved view applies its spec');
+ok(vv.dbViewName === 'Open Asylum' && vv.dbViews.find(x => x.name === 'Open Asylum').active === true, 'views: the loaded view is marked active');
 
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
