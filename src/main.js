@@ -1582,9 +1582,12 @@ async function importFileToRoom(roomId, file, opts = {}) {
     }
   }
 
+  // Compress dataset imports (CSV/JSON) before upload — the blob is the whole
+  // cost of downloading the rows later, and tabular text gzips ~5–10×, so it
+  // downloads far faster and fits many more rows under the server's upload cap.
   logProgress(`Uploading ${displayName} (${file.size} bytes)…`);
-  const ref = await mediaUploadFile(file, { name: displayName });
-  logProgress(`Uploaded ${displayName} → ${ref.mxc}`);
+  const ref = await mediaUploadFile(file, { name: displayName, compress: opts.materialize !== false });
+  logProgress(`Uploaded ${displayName} → ${ref.mxc}${ref.enc === 'gzip' ? ` (gzip ${ref.size} of ${ref.rawSize} bytes)` : ''}`);
 
   const payload = {
     name: displayName,

@@ -129,6 +129,28 @@ spine (native sets via a transient store), so all four work uniformly.*
 > First paint went 61 ms → **0.5 ms** and cached filter 135 ms → **<1 ms** at 1M.
 > First-paint / cached-filter stay ~flat from 10k→1M — the window, not the set.
 
+### Downloading 1M records from Matrix
+
+1M rows are **one encrypted media blob**, not 1M events — the room timeline is a
+handful of events (`import` INS + `field_plan`/`derived_set`/`file` DEFs), and
+`getMediaBytes` resolves the blob (OPFS mirror first, else the authenticated
+media endpoint), decrypts, and streams it into the worker parser. Download-once
+(OPFS), request-coalesced, off-thread parse.
+
+- [x] **gzip import blobs** (`src/crypto/gzip.js`) — compress before encrypt,
+  decompress on read, marked `enc:'gzip'` in the media ref (old blobs read
+  verbatim). Immigration CSV compresses to **~13% (≈8×)**: the 47 MB / 1M-row
+  blob → ~6 MB, so downloads are ~8× cheaper **and** ~8× more rows fit under the
+  homeserver `max_upload_size` (~50 MB) cap. Codec round-trip tested
+  (`test/gzip.test.mjs`). *Needs in-app verification (touches the encrypted media
+  path).*
+- [ ] **Chunk large imports** into multiple sub-blobs each < `max_upload_size`
+  (downloads already coalesce/parallelize) — removes the single-blob ceiling for
+  10M+.
+- [ ] **Stream download → decrypt → parse** (AES-CTR is a stream cipher;
+  `DecompressionStream` streams; incremental parse) — bounded memory + progressive
+  fill for very large blobs.
+
 ---
 
 ## Filter / sort operators (so it feels like Airtable)
