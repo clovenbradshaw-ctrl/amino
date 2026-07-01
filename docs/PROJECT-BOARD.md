@@ -65,23 +65,24 @@ until this exists — it is also the entire perf story.*
 - [x] `rowStore.query()` — filter · sort · group · search · fields · offset · limit → `{page, total, groups}`; per-type operators + boolean predicate tree; covered by `test/row-store.test.mjs` (31 assertions)
 - [x] `public/rows.worker.js` — materialize import blobs off the main thread (batched postMessage protocol) + `public/rows-worker-client.js` main-thread client with an inline fallback
 - [x] Streaming parser replaces `parseCSV` — chunked push/end CSV parser in `public/rows-materialize.js`, emits rows in batches (progressive fill); row mapping mirrors `import-rows.js`
-- [~] Re-point `buildTable` / `listSets` / the grid at the store (read windows, not full sets)
+- [x] Re-point `buildTable` / the grid at the store (read windows, not full sets)
   - [x] `AminoDB.tableFromStore()` — `buildTable` as a thin adapter over `store.query()`; **parity-tested** against the legacy full-scan `buildTable` (same columns + rows) plus windowed pagination/search (`test/db-store-adapter.test.mjs`, 12 assertions)
-  - [ ] Flip `dbModel()` in `ui/amino-app.js` to the store path for import-backed sets — **needs in-app verification** (the record drawer + CRM + link resolution read `state.entities`, so the swap must keep single-record lookups working). Small, reviewable change now that parity is proven.
+  - [x] `dbModel()` in `ui/amino-app.js` serves import-backed sets from the store (`_rowStore` + `_syncRowStore`); native fold-entity sets (client/note) keep `buildTable`. Verified headless in `amino-app.test.mjs` **with rows absent from `state.entities`** — proving the grid reads the store, incl. windowed search.
 
-> **Shipped so far:** the columnar store + `query()` spine
-> (`public/row-store.js`); the off-main-thread materializer — pure parse+map
-> (`rows-materialize.js`), the worker (`rows.worker.js`), and its client
-> (`rows-worker-client.js`); and the `tableFromStore` adapter that makes
-> `buildTable` a thin wrapper over `query()`. All headless-tested (**59 new
-> assertions** across `row-store` / `rows-materialize` / `db-store-adapter`,
-> incl. materialize → store → query end-to-end and column/row parity with the
-> legacy path) and wired into the build + `npm test`.
+> **Phase 1 spine — done.** The columnar store + `query()` (`public/row-store.js`),
+> the off-main-thread materializer (`rows-materialize.js` + `rows.worker.js` +
+> `rows-worker-client.js`), the `tableFromStore` adapter, and the live grid swap
+> all shipped and headless-tested (**65 new assertions**; the Database grid now
+> serves imported sets from `query()`). Full `npm test` green (260 assertions,
+> 6 files).
 >
-> **Remaining:** the live `dbModel()` swap. Held deliberately for verification
-> in the running app rather than pushed blind — it touches the record drawer and
-> CRM paths that read `state.entities`. Parity is proven, so it's now a small,
-> low-risk change.
+> **Deliberately deferred (Phase 4/5 follow-ups, not gate blockers):**
+> `augmentState` still mirrors import rows into `state.entities` so the record
+> drawer / CRM / link resolution keep working — dropping that (and moving
+> single-record + link lookups onto the store/adjacency index) is the remaining
+> memory win. And `materializeLive` still parses on the main thread via
+> `AminoRows`; switching it to `AminoRowsWorker` (worker built + ready, with a
+> main-thread fallback) is the off-thread cutover. Both want in-app verification.
 
 ### Phase 2 — Make the painted toolbar real · *1 wk* · the "up & running" ask 🟠
 *`amino-app.js` ~line 760 already renders Hide fields / Filter / Sort / Group as

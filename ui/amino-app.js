@@ -382,6 +382,7 @@ class Component extends DCLogic {
         ? window.AminoDB.augmentState(state,this._importRows,window.AminoDB.activeImportAnchors(state))
         : state;
       this._renderVer++;
+      this._syncRowStore(state);
       this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
       if(!this.demo) this.materializeLive(state);
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
@@ -470,11 +471,25 @@ class Component extends DCLogic {
           const st=this._liveState||state;
           this._renderState=DB.augmentState(st,this._importRows,DB.activeImportAnchors(st));
           this._renderVer++;
+          this._syncRowStore(st);
           this.clients=this.projectLive(st);
           let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
           this.setState({cur});
         });
     });
+  }
+  // Mirror the newest generation of every imported set into the columnar row
+  // store (AminoRowStore) so the Database grid answers with query() — the
+  // O(window) path. Rebuilds each set from the already-materialized _importRows,
+  // grouped by derived_set across a set's active import chunks.
+  _syncRowStore(state){
+    const RS=window.AminoRowStore, DB=window.AminoDB;
+    if(!RS||!DB||this.demo||!this._importRows) return;
+    if(!this._rowStore) this._rowStore=RS.create();
+    const active=DB.activeImportAnchors(state), ents=(state&&state.entities)||{};
+    const bySet={};
+    for(const anchor in this._importRows){ if(!active.has(anchor)) continue; const imp=ents[anchor]; const set=imp&&imp.derived_set; if(!set) continue; (bySet[set]||(bySet[set]=[])).push.apply(bySet[set],this._importRows[anchor]); }
+    for(const set in bySet) this._rowStore.loadSet(set,bySet[set]);
   }
   buildClients(state){
     const ents=state.entities||{}, notesByClient={};
@@ -711,35 +726,49 @@ class Component extends DCLogic {
     // the raw fold changes, NOT when the user types in search or scrolls. Keyed
     // on those versions so search/scroll re-renders reuse it instead of rebuilding
     // a 12k-row table on every keystroke.
-    const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
-    let built;
-    if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
-    else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
-    const rows=built.rows;
-    // Column layout (primary + data columns, ordered/capped) — memoized on the
-    // same build, keyed also on the "show all fields" toggle.
-    const layoutKey=builtKey+'|'+(S.dbShowAllCols?1:0);
-    let layout;
-    if(this._colCache&&this._colCache.key===layoutKey) layout=this._colCache.val;
-    else { layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols); this._colCache={key:layoutKey,val:layout}; }
-    const columns=layout.columns, primaryName=layout.primaryName;
+    const active=sets.find(s=>s.name===activeName)||{};
     const dq=S.dbSearch.trim().toLowerCase();
-    const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
-    // Window the rows: only a bounded slice is turned into cell view-models and
-    // rendered into the DOM, so a huge sheet can't create tens of thousands of
-    // nodes and freeze/crash the tab. The window grows on scroll-to-bottom and via
-    // the "Load more" control (dbLimit), and resets when the table or search change.
-    const filtered=rows.filter(match), total=filtered.length;
-    const limit=Math.min(Math.max(this.DB_PAGE, S.dbLimit||this.DB_PAGE), total);
-    const windowRows=total>limit?filtered.slice(0,limit):filtered;
-    this._dbHasMore=total>windowRows.length;
+    // Imported sets flow through the columnar query spine (AminoRowStore.query):
+    // filter/search/sort and the visible window are answered by the store, so the
+    // grid never does an Object.values(state.entities).filter over the full set.
+    // Native, event-sourced sets (client/note — thousands, in the fold) keep the
+    // proven buildTable path. Rows the store serves need not live in
+    // state.entities at all, which is the 1M memory win (docs/BUILD-PLAN.md).
+    const store=this._rowStore, useStore=!!(store&&store.has&&store.has(activeName)&&active.isImport);
+    let built,layout,windowRows,total;
+    const limit=Math.max(this.DB_PAGE,S.dbLimit||this.DB_PAGE);
+    if(useStore){
+      const schemaFields=state.schema&&state.schema.fields&&state.schema.fields[activeName];
+      const res=DB.tableFromStore(store,activeName,schemaFields,{search:dq||undefined,offset:0,limit});
+      built={cols:res.cols,rows:res.rows};
+      layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols);
+      windowRows=res.rows; total=res.total; this._dbHasMore=res.hasMore;
+    }else{
+      const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
+      if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
+      else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
+      // Column layout (primary + data columns, ordered/capped) — memoized on the
+      // same build, keyed also on the "show all fields" toggle.
+      const layoutKey=builtKey+'|'+(S.dbShowAllCols?1:0);
+      if(this._colCache&&this._colCache.key===layoutKey) layout=this._colCache.val;
+      else { layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols); this._colCache={key:layoutKey,val:layout}; }
+      const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
+      // Window the rows: only a bounded slice is turned into cell view-models and
+      // rendered into the DOM, so a huge sheet can't create tens of thousands of
+      // nodes and freeze/crash the tab. The window grows on scroll-to-bottom and via
+      // the "Load more" control (dbLimit), and resets when the table or search change.
+      const filtered=built.rows.filter(match); total=filtered.length;
+      const lim=Math.min(limit,total);
+      windowRows=total>lim?filtered.slice(0,lim):filtered;
+      this._dbHasMore=total>windowRows.length;
+    }
+    const columns=layout.columns, primaryName=layout.primaryName;
     const dbRows=windowRows.map(e=>{ const label=this.primaryLabel(e,primaryName); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
     const moreCount=Math.min(300,total-windowRows.length);
     const dbColTemplate=layout.dbColTemplate;
     // Honest signal that the grid is capping a wide table, with the escape hatch
     // to render every field (relies on the grid's own horizontal scroll).
     const hiddenCols=layout.hiddenCols, canCollapse=!!S.dbShowAllCols&&layout.dataColCount>30;
-    const active=sets.find(s=>s.name===activeName)||{};
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({

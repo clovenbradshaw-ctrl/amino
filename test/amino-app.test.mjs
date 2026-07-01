@@ -19,7 +19,9 @@ assert.ok(ME && ME.fold && ME.OP, 'MatrixEngine (fold engine) loaded');
 // import-row materializer + the Database data engine (window.AminoRows / AminoDB)
 new Function('window', fs.readFileSync('public/import-rows.js', 'utf8'))(globalThis);
 new Function('window', fs.readFileSync('public/db-data.js', 'utf8'))(globalThis);
+new Function('window', fs.readFileSync('public/row-store.js', 'utf8'))(globalThis);
 assert.ok(globalThis.AminoDB && globalThis.AminoDB.buildTable, 'AminoDB (db engine) loaded');
+assert.ok(globalThis.AminoRowStore && globalThis.AminoRowStore.create, 'AminoRowStore (query spine) loaded');
 
 // stub the live homeserver bridge — this test is about the fold/projection
 globalThis.MatrixLive = {
@@ -221,6 +223,38 @@ ok(v8.dbTotal === 250 && v8.dbHasMore === true, 'windowing: total row count + ha
 v8.onDbMore();
 v8 = c8.renderVals();
 ok(v8.dbRows.length === Math.min(250, c8.DB_PAGE + 300), 'windowing: Load more grows the window');
+
+// 8a) Store-backed grid — an IMPORTED set is served by the columnar query spine
+// (AminoRowStore.query), not Object.values(state.entities).filter. Proven by
+// putting the rows ONLY in the store (render state has just the import carrier,
+// NOT the rows) and confirming the grid still windows + searches all 300 — i.e.
+// the 1M memory win: import rows need not live in state.entities.
+const c8a = new Component({});
+const impA = ME.makeAnchor('import', { s: 'Client Info' }, '@a', 1);
+const impState = ME.fold([
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['Client Info'] }),
+  ev(ME.OP.INS, { anchor: impA, entity_type: 'import', payload: {} }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'derived_set', value: 'Client Info' }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'field_plan', value: [{ name: 'Family Name', csvIdx: 0, type: 'text' }] }),
+  ev(ME.OP.DEF, { anchor: impA, path: 'rows_imported', value: 300 }),
+]);
+const impRows = [];
+for (let i = 0; i < 300; i++) impRows.push({ _anchor: impA + '#r' + i, _type: 'Client Info', 'Family Name': 'Fam' + i });
+c8a.curWs = '!ws1'; c8a.workspaces = [{ roomId: '!ws1', name: 'W' }];
+c8a.state.connected = true; c8a.state.view = 'db'; c8a.state.dbTable = 'Client Info';
+c8a._liveState = impState;
+c8a._renderState = impState;                 // rows are NOT in state.entities…
+c8a._importRows = { [impA]: impRows };
+c8a._syncRowStore(impState);                 // …only in the columnar store
+ok(c8a._rowStore && c8a._rowStore.count('Client Info') === 300, 'store: _syncRowStore mirrors the imported set (300 rows)');
+let v8a = c8a.renderVals();
+ok(v8a.dbTotal === 300 && v8a.dbHasMore === true, 'store grid: total + hasMore come from query() with rows only in the store');
+ok(v8a.dbRows.length === c8a.DB_PAGE, 'store grid: renders one windowed page, not all 300');
+ok(v8a.dbColumns.some((col) => col.name === 'Family Name'), 'store grid: columns derived from the store');
+c8a.state.dbSearch = 'fam299';
+v8a = c8a.renderVals();
+ok(v8a.dbTotal === 1 && v8a.dbRows.length === 1, 'store grid: search is a windowed query() over the store');
+ok(v8a.dbRows[0].cells[0].text === 'Fam299', 'store grid: the matching row renders');
 
 // 8b) Column layout — Airtable/Softr fidelity. The grid leads with the table's
 // PRIMARY field, shown once (no synthetic-"Name" + real-"Name" duplicate), and a
