@@ -391,6 +391,28 @@ vt = cTb.renderVals();
 ok(vt.dbIsGallery === true && vt.dbIsTable === false, 'gallery: switches to the card layout');
 ok(vt.dbGallery.cards.length === 5 && typeof vt.dbGallery.cards[0].title === 'string', 'gallery: one card per windowed query() row');
 
+// 8h) Calendar — rows laid out by day over a detected date field.
+const cCal = new Component({});
+const calEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['case'] }) ];
+[['A', '2026-03-01'], ['B', '2026-03-01'], ['C', '2026-04-15']].forEach(([name, d], i) => {
+  const a = ME.makeAnchor('case', { i }, '@a', i);
+  calEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'case', payload: {} }));
+  calEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Name', value: name }));
+  calEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Hearing', value: d }));
+});
+cCal.curWs = '!ws1'; cCal.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cCal.state.connected = true; cCal.state.view = 'db'; cCal.state.dbTable = 'case';
+const calState = ME.fold(calEvents);
+cCal._liveState = calState; cCal._renderState = calState;
+let vc = cCal.renderVals();
+const calBtn = vc.dbViewTypes.find(v => v.key === 'calendar');
+ok(calBtn, 'calendar: the switcher offers Calendar when a date field is detected');
+calBtn.onPick();
+vc = cCal.renderVals();
+ok(vc.dbIsCalendar === true && vc.dbCalendar.field === 'Hearing', 'calendar: lays out over the detected date field');
+ok(vc.dbCalendar.days.length === 2, 'calendar: rows bucket into distinct days');
+ok(vc.dbCalendar.days[0].date === '2026-03-01' && vc.dbCalendar.days[0].cards.length === 2, 'calendar: the first day holds its two records, sorted by date');
+
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
 c9.ML = () => ({

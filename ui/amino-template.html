@@ -10333,6 +10333,23 @@
             <sc-if value="{{ dbHasMore }}" hint-placeholder-val="{{ false }}"><div onclick="{{ onDbMore }}" style="text-align:center;padding:13px;color:#2747C9;font-size:12px;font-weight:700;cursor:pointer">{{ dbMoreText }}</div></sc-if>
           </div>
         </sc-if>
+        <sc-if value="{{ dbIsCalendar }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-height:0;overflow:auto;padding:14px 16px;background:#F7F8FA">
+            <sc-for list="{{ dbCalendar.days }}" as="day" hint-placeholder-count="3">
+              <div style="margin-bottom:15px">
+                <div style="font-size:11px;font-weight:700;color:#8A5A14;margin-bottom:7px;letter-spacing:.03em">{{ day.label }}</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ day.cards }}" as="dcard" hint-placeholder-count="3">
+                    <div onclick="{{ dcard.onOpen }}" style="background:#fff;border:1px solid #E7EAEE;border-radius:8px;padding:9px 12px;cursor:pointer;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                      <span style="font-size:12.5px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dcard.title }}</span>
+                      <sc-if value="{{ dcard.sub }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:#8A93A0;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dcard.sub }}</span></sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
         <sc-if value="{{ dbIsTable }}" hint-placeholder-val="{{ true }}">
         <div class="am-sc" data-am-grid data-screen-label="{{ dbName }}" style="flex:1;min-height:0;overflow:auto">
       <div style="min-width:max-content">

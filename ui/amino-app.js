@@ -494,7 +494,10 @@ class Component extends DCLogic {
   // ── the Database view spec (the real toolbar) ── per-set { sort, group,
   // filter, hidden } that compiles into AminoRowStore.query() params. Persisted
   // per set name so switching tabs keeps each table's filter/sort/group/hide.
-  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {type:(s&&s.type)||'table',sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[]}; }
+  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {type:(s&&s.type)||'table',sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[],dateField:(s&&s.dateField)||null}; }
+  // A column is date-like if ≥70% of its sampled values parse as ISO-ish dates —
+  // how the calendar view finds its date field (inferType never labels 'date').
+  _looksDate(vals){ let ok=0,tot=0; for(const v of (vals||[])){ if(v==null||v==='') continue; tot++; const s=String(v); if(/\d{4}-\d{2}-\d{2}/.test(s)&&!isNaN(Date.parse(s))) ok++; } return tot>0&&ok/tot>=0.7; }
   _patchSpec(set,patch){ this.setState(st=>{ const cur=(st.dbSpecs||{})[set]||{}; return {dbSpecs:Object.assign({},st.dbSpecs,{[set]:Object.assign({},cur,patch)}), dbLimit:this.DB_PAGE}; }); }
   // Click a column header to cycle its sort: off → asc → desc → off (single-key;
   // the query engine supports multi-key, exposed later).
@@ -507,7 +510,7 @@ class Component extends DCLogic {
   _cycleGroup(set,groupables){ const list=groupables||[]; if(!list.length){ this._patchSpec(set,{group:null}); return; } const cur=this._dbSpec(set).group&&this._dbSpec(set).group.field; const idx=(cur?list.indexOf(cur):-1)+1; const nextField=idx<list.length?list[idx]:null; this._patchSpec(set,{group:nextField?{field:nextField}:null}); }
   // Switch the grid's view type; Kanban needs a group field, so auto-pick the
   // first eligible column when none is set.
-  _setViewType(set,type,groupables){ const patch={type}; if(type==='kanban'){ const g=this._dbSpec(set).group; if((!g||!g.field)&&groupables&&groupables.length) patch.group={field:groupables[0]}; } this._patchSpec(set,patch); }
+  _setViewType(set,type,opts){ opts=opts||{}; const patch={type}, sp=this._dbSpec(set); if(type==='kanban'){ if((!sp.group||!sp.group.field)&&opts.groupables&&opts.groupables.length) patch.group={field:opts.groupables[0]}; } if(type==='calendar'){ if(!sp.dateField&&opts.dateables&&opts.dateables.length) patch.dateField=opts.dateables[0]; } this._patchSpec(set,patch); }
   // A card's secondary line: the first populated field that isn't the title or
   // the group field (kanban/gallery card subtitle).
   _cardSub(e,primaryName,groupField){ for(const k in e){ if(k[0]==='_'||k===primaryName||k===groupField) continue; const v=e[k]; if(v==null||v===''||(Array.isArray(v)&&!v.length)) continue; return k+': '+(Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):String(v))); } return ''; }
@@ -794,6 +797,7 @@ class Component extends DCLogic {
     // buttons reflect state and reset. Filter toggles a primary-not-empty clause;
     // Group cycles the eligible select/boolean columns → group counts.
     const groupables=built.cols.filter(c=>c.type==='select'||c.type==='boolean').map(c=>c.name);
+    const dateables=built.cols.filter(c=>c.type==='date'||this._looksDate(windowRows.map(r=>r[c.name]))).map(c=>c.name);
     const groupField=(spec.group&&spec.group.field)||'';
     // Precompute the button styling (dc-runtime binds property paths, not
     // expressions — no ternaries in the template).
@@ -811,10 +815,11 @@ class Component extends DCLogic {
     const viewType=spec.type||'table';
     const vtDef=[{key:'table',icon:'table',label:'Grid'}];
     if(groupables.length||viewType==='kanban') vtDef.push({key:'kanban',icon:'kanban',label:'Kanban'});
+    if(dateables.length||viewType==='calendar') vtDef.push({key:'calendar',icon:'calendar-dots',label:'Calendar'});
     vtDef.push({key:'gallery',icon:'squares-four',label:'Gallery'});
     const dbViewTypes=vtDef.map(v=>({key:v.key,icon:v.icon,label:v.label,active:viewType===v.key,
       bg:viewType===v.key?'#EDE7DA':'transparent',color:viewType===v.key?'#8A5A14':'#8F95A0',
-      onPick:()=>this._setViewType(activeName,v.key,groupables)}));
+      onPick:()=>this._setViewType(activeName,v.key,{groupables,dateables})}));
     let dbKanban={field:'',columns:[]};
     if(viewType==='kanban'&&qStore){
       const kf=(spec.group&&spec.group.field)||groupables[0]||'';
@@ -830,9 +835,23 @@ class Component extends DCLogic {
         })};
       }
     }
+    // Calendar: rows laid out by day over a chosen date field (retires the
+    // hardcoded hearings/deadlines lists — a real view over NTA/Hearing/due-date).
+    let dbCalendar={field:'',days:[]};
+    if(viewType==='calendar'&&qStore){
+      const df=spec.dateField||dateables[0]||'';
+      if(df){
+        const cres=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,search:dq||undefined,sort:[{field:df,dir:'asc'}],offset:0,limit:this.DB_PAGE});
+        const byDay=new Map();
+        for(const e of cres.rows){ const t=Date.parse(e[df]); if(isNaN(t)) continue; const key=new Date(t).toISOString().slice(0,10); if(!byDay.has(key)) byDay.set(key,[]); byDay.get(key).push(e); }
+        const days=Array.from(byDay.keys()).sort().map(key=>({date:key,label:key,cards:byDay.get(key).map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,df),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})}))}));
+        dbCalendar={field:df,days};
+      }
+    }
     const dbIsKanban=viewType==='kanban'&&dbKanban.columns.length>0;
     const dbIsGallery=viewType==='gallery';
-    const dbIsTable=!dbIsKanban&&!dbIsGallery;
+    const dbIsCalendar=viewType==='calendar'&&dbCalendar.days.length>0;
+    const dbIsTable=!dbIsKanban&&!dbIsGallery&&!dbIsCalendar;
     // Gallery: the grid's already-windowed query() rows, as cards — nearly free.
     const dbGallery={cards: dbIsGallery ? windowRows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,''),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})})) : []};
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
@@ -845,7 +864,7 @@ class Component extends DCLogic {
       dbGrouped:!!groupField&&dbIsTable, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
       // View types (Phase 3): the switcher + the kanban board (windowed query()
       // per group). dbIsTable/dbIsKanban toggle the body; dbKanban carries columns.
-      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban, dbIsGallery, dbGallery,
+      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban, dbIsGallery, dbGallery, dbIsCalendar, dbCalendar,
       // Wide-table column controls: surface how many fields are hidden behind the
       // cap and let the user expand to all fields (or collapse back).
       dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),

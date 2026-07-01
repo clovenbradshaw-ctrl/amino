@@ -99,8 +99,8 @@ spine (native sets via a transient store), so all four work uniformly.*
 ### Phase 3 — View types (thin renderers over `query()`) · *1–1.5 wk* 🔵
 
 - [x] Kanban — a view type that runs one **windowed `query()` per group value**; a view-type switcher (Grid/Kanban) sets `spec.type`, columns show group counts + card windows. Covered by `amino-app.test.mjs` (+5 assertions).
-- [ ] Calendar — filter to a visible date range over a chosen date field
-- [ ] Retire hardcoded hearings/deadlines lists in favour of a real view over `NTA Date` / `Hearing` / due-date
+- [x] Calendar — a date-field is auto-detected (`_looksDate`); rows lay out by day over `query()` sorted by that field (`amino-app.test.mjs` +4 assertions)
+- [~] Retire hardcoded hearings/deadlines lists — the calendar view is the real replacement over `NTA Date` / `Hearing` / due-date; removing the old hardcoded lists from the CRM screens is a follow-up cleanup
 - [x] Gallery — the grid's windowed `query()` rows as a responsive card layout (reuses the same window; `amino-app.test.mjs` +3 assertions)
 
 > **Kanban shipped.** The switcher lives in the grid toolbar; picking Kanban
