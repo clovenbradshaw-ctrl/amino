@@ -220,7 +220,14 @@
           .sort((A, B) => {
             for (const k of keys) {
               const col = s.columns.get(k.field);
-              const c = compareValues(col ? col[A.i] : undefined, col ? col[B.i] : undefined);
+              const av = col ? col[A.i] : undefined, bv = col ? col[B.i] : undefined;
+              // Empties always sink to the bottom, in BOTH directions — direction
+              // only reorders the populated values (Airtable/Excel behaviour).
+              const ae = isEmpty(av), be = isEmpty(bv);
+              if (ae && be) continue;
+              if (ae) return 1;
+              if (be) return -1;
+              const c = compareValues(av, bv);
               if (c) return k.dir === 'desc' ? -c : c;
             }
             return A.ord - B.ord; // stable

@@ -84,6 +84,11 @@ const sorted = store.query('Client Info', { sort: [{ field: 'Relief Sought', dir
 eq(sorted.page.map(r => r['Family Name']), ['Zimmer', 'Lopez', 'Nguyen', 'Adams'],
    'multi-key sort: Relief asc, then A# desc within group');
 
+// ── sort sinks empties last in BOTH directions ──
+const byDate = store.query('Client Info', { sort: [{ field: 'NTA Date', dir: 'desc' }] });
+ok(byDate.page[byDate.page.length - 1]['Family Name'] === 'Zimmer',
+   'sort desc keeps the empty-date row last (empties sink both ways)');
+
 // ── group counts over the filtered set ──
 const grouped = store.query('Client Info', { group: { field: 'Relief Sought' } });
 eq(grouped.groups, [{ key: 'Asylum', count: 3 }, { key: 'Cancellation', count: 1 }], 'group → {key, count}[] desc by count');

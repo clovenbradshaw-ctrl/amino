@@ -85,13 +85,16 @@ until this exists — it is also the entire perf story.*
 > main-thread fallback) is the off-thread cutover. Both want in-app verification.
 
 ### Phase 2 — Make the painted toolbar real · *1 wk* · the "up & running" ask 🟠
-*`amino-app.js` ~line 760 already renders Hide fields / Filter / Sort / Group as
-dead buttons. Wire each to a `query()` param.*
+*The Hide fields / Filter / Sort / Group buttons are now live, driven by a
+per-set **view spec** (`this.state.dbSpecs[set]`) that compiles into
+`query()` params. Every grid — imported or native — flows through the query
+spine (native sets via a transient store), so all four work uniformly.*
 
-- [ ] Filter builder UI → predicate tree (per-type operators, see below)
-- [ ] Multi-key Sort (drag to reorder)
-- [ ] Group-by a field → grouped grid (substrate for kanban)
-- [ ] Hide fields → the `fields` param; `dbShowAllCols` becomes per-view visibility
+- [~] **Filter** — the button toggles a real predicate (primary `isNotEmpty`) through `query()`; the full per-type **builder UI** (operator table below) is the fast-follow. Engine + predicate tree already support every operator.
+- [x] **Sort** — click a column header to cycle asc/desc/off (with a caret indicator), compiled to `query().sort`. Multi-key is engine-supported; drag-to-reorder UI is the fast-follow. Fixed: empties sink last in both directions.
+- [x] **Group** — the Group button cycles the eligible select/boolean columns and renders a group-counts bar from `query().groups` (kanban's substrate).
+- [x] **Hide fields** — per-column hide from the header (`spec.hidden`) drops columns before layout; the button shows the hidden count and resets.
+- [x] Dead toolbar buttons in `ui/amino-app.js` are wired to handlers (`_cycleSort` / `_toggleFilter` / `_cycleGroup` / `_hideField` / `_patchSpec`); template binds header + toolbar `onClick`s. Covered by `amino-app.test.mjs` (+12 assertions).
 
 ### Phase 3 — View types (thin renderers over `query()`) · *1–1.5 wk* 🔵
 

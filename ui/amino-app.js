@@ -491,6 +491,20 @@ class Component extends DCLogic {
     for(const anchor in this._importRows){ if(!active.has(anchor)) continue; const imp=ents[anchor]; const set=imp&&imp.derived_set; if(!set) continue; (bySet[set]||(bySet[set]=[])).push.apply(bySet[set],this._importRows[anchor]); }
     for(const set in bySet) this._rowStore.loadSet(set,bySet[set]);
   }
+  // ── the Database view spec (the real toolbar) ── per-set { sort, group,
+  // filter, hidden } that compiles into AminoRowStore.query() params. Persisted
+  // per set name so switching tabs keeps each table's filter/sort/group/hide.
+  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[]}; }
+  _patchSpec(set,patch){ this.setState(st=>{ const cur=(st.dbSpecs||{})[set]||{}; return {dbSpecs:Object.assign({},st.dbSpecs,{[set]:Object.assign({},cur,patch)}), dbLimit:this.DB_PAGE}; }); }
+  // Click a column header to cycle its sort: off → asc → desc → off (single-key;
+  // the query engine supports multi-key, exposed later).
+  _cycleSort(set,field){ const found=(this._dbSpec(set).sort||[]).find(s=>s.field===field), dir=found?found.dir:''; const next=dir===''?'asc':dir==='asc'?'desc':''; this._patchSpec(set,{sort:next?[{field,dir:next}]:[]}); }
+  _hideField(set,field){ const cur=this._dbSpec(set).hidden||[]; if(cur.indexOf(field)>=0) return; this._patchSpec(set,{hidden:cur.concat([field])}); }
+  // Filter button: toggle a "primary is not empty" clause (a real predicate over
+  // query()); the full per-type builder UI is the fast-follow.
+  _toggleFilter(set,primary){ if(this._dbSpec(set).filter){ this._patchSpec(set,{filter:null}); return; } if(!primary) return; this._patchSpec(set,{filter:{op:'and',clauses:[{field:primary,op:'isNotEmpty'}]}}); }
+  // Group button: cycle through the eligible (select/boolean) columns → off.
+  _cycleGroup(set,groupables){ const list=groupables||[]; if(!list.length){ this._patchSpec(set,{group:null}); return; } const cur=this._dbSpec(set).group&&this._dbSpec(set).group.field; const idx=(cur?list.indexOf(cur):-1)+1; const nextField=idx<list.length?list[idx]:null; this._patchSpec(set,{group:nextField?{field:nextField}:null}); }
   buildClients(state){
     const ents=state.entities||{}, notesByClient={};
     for(const a in ents){ const e=ents[a]; if(e._type==='note'){ const ci=e.client||e.ci; (notesByClient[ci]=notesByClient[ci]||[]).push({act:e.text||e.act||'',type:e.noteType||e.type||'Note',date:e.date||'',by:e.by||(String(e._sender||'').replace(/^@/,'').split(':')[0]),desc:e.desc||'',due:e.due||'',_ts:e._created||0}); } }
@@ -727,53 +741,69 @@ class Component extends DCLogic {
     // on those versions so search/scroll re-renders reuse it instead of rebuilding
     // a 12k-row table on every keystroke.
     const active=sets.find(s=>s.name===activeName)||{};
+    const spec=this._dbSpec(activeName);
+    const hidden=spec.hidden||[];
     const dq=S.dbSearch.trim().toLowerCase();
-    // Imported sets flow through the columnar query spine (AminoRowStore.query):
-    // filter/search/sort and the visible window are answered by the store, so the
-    // grid never does an Object.values(state.entities).filter over the full set.
-    // Native, event-sourced sets (client/note — thousands, in the fold) keep the
-    // proven buildTable path. Rows the store serves need not live in
-    // state.entities at all, which is the 1M memory win (docs/BUILD-PLAN.md).
-    const store=this._rowStore, useStore=!!(store&&store.has&&store.has(activeName)&&active.isImport);
-    let built,layout,windowRows,total;
     const limit=Math.max(this.DB_PAGE,S.dbLimit||this.DB_PAGE);
-    if(useStore){
-      const schemaFields=state.schema&&state.schema.fields&&state.schema.fields[activeName];
-      const res=DB.tableFromStore(store,activeName,schemaFields,{search:dq||undefined,offset:0,limit});
-      built={cols:res.cols,rows:res.rows};
-      layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols);
-      windowRows=res.rows; total=res.total; this._dbHasMore=res.hasMore;
-    }else{
-      const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
-      if(this._builtCache&&this._builtCache.key===builtKey) built=this._builtCache.val;
-      else { built=DB.buildTable(activeName,state); this._builtCache={key:builtKey,val:built}; }
-      // Column layout (primary + data columns, ordered/capped) — memoized on the
-      // same build, keyed also on the "show all fields" toggle.
-      const layoutKey=builtKey+'|'+(S.dbShowAllCols?1:0);
-      if(this._colCache&&this._colCache.key===layoutKey) layout=this._colCache.val;
-      else { layout=this.buildColumns(activeName,built,state,!!S.dbShowAllCols); this._colCache={key:layoutKey,val:layout}; }
-      const match=(e)=>{ if(!dq) return true; if(this.rowLabel(e).toLowerCase().includes(dq)) return true; for(const k in e){ if(k[0]==='_')continue; const v=e[k]; if(v!=null&&String(v).toLowerCase().includes(dq)) return true; } return false; };
-      // Window the rows: only a bounded slice is turned into cell view-models and
-      // rendered into the DOM, so a huge sheet can't create tens of thousands of
-      // nodes and freeze/crash the tab. The window grows on scroll-to-bottom and via
-      // the "Load more" control (dbLimit), and resets when the table or search change.
-      const filtered=built.rows.filter(match); total=filtered.length;
-      const lim=Math.min(limit,total);
-      windowRows=total>lim?filtered.slice(0,lim):filtered;
-      this._dbHasMore=total>windowRows.length;
+    // Every grid is answered by the query spine (docs/BUILD-PLAN.md). Imported
+    // sets use the persistent columnar store; native, event-sourced sets (small)
+    // load into a transient per-build store so filter / sort / group / hide are
+    // one uniform query() path — nothing here scans Object.values(state.entities).
+    // Filter/sort/group/hidden come from the per-set view spec (the real toolbar).
+    const RS=window.AminoRowStore;
+    const fv=(this._foldCache[this.curWs]||{}).ver||0, builtKey=activeName+'|'+this._renderVer+'|'+fv;
+    let qStore=null;
+    if(this._rowStore&&this._rowStore.has&&this._rowStore.has(activeName)&&active.isImport) qStore=this._rowStore;
+    else if(RS){
+      if(this._gridStore&&this._gridStore.key===builtKey) qStore=this._gridStore.store;
+      else { const base=DB.buildTable(activeName,state); const ts=RS.create(); ts.loadSet(activeName,base.rows); this._gridStore={key:builtKey,store:ts}; qStore=ts; }
     }
-    const columns=layout.columns, primaryName=layout.primaryName;
+    const schemaFields=state.schema&&state.schema.fields&&state.schema.fields[activeName];
+    let built,windowRows,total,groups;
+    if(qStore){
+      const res=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,sort:spec.sort,group:spec.group,search:dq||undefined,offset:0,limit});
+      built={cols:res.cols,rows:res.rows}; windowRows=res.rows; total=res.total; groups=res.groups; this._dbHasMore=res.hasMore;
+    }else{ // no store engine available → last-resort raw path (kept for safety)
+      built=DB.buildTable(activeName,state); windowRows=built.rows.slice(0,limit); total=built.rows.length; this._dbHasMore=total>windowRows.length;
+    }
+    // Hidden fields drop out before layout; the rest are ordered/capped as before,
+    // then annotated with click-to-sort (cycles asc/desc/off) + a hide affordance.
+    const visibleCols=hidden.length?built.cols.filter(c=>hidden.indexOf(c.name)<0):built.cols;
+    const layout=this.buildColumns(activeName,{cols:visibleCols,rows:windowRows},state,!!S.dbShowAllCols);
+    const primaryName=layout.primaryName;
+    const dirOf=(f)=>{ const k=(spec.sort||[]).find(s=>s.field===f); return k?k.dir:''; };
+    const columns=layout.columns.map(col=>{
+      const f=(col.k==='__name')?primaryName:col.k, dir=f?dirOf(f):'';
+      return Object.assign({},col,{ sortIcon: dir==='asc'?'arrow-up':dir==='desc'?'arrow-down':'',
+        onSort: f?(()=>this._cycleSort(activeName,f)):(()=>{}),
+        onHide: (f&&col.k!=='__name')?(()=>this._hideField(activeName,f)):null });
+    });
     const dbRows=windowRows.map(e=>{ const label=this.primaryLabel(e,primaryName); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
     const moreCount=Math.min(300,total-windowRows.length);
     const dbColTemplate=layout.dbColTemplate;
     // Honest signal that the grid is capping a wide table, with the escape hatch
     // to render every field (relies on the grid's own horizontal scroll).
     const hiddenCols=layout.hiddenCols, canCollapse=!!S.dbShowAllCols&&layout.dataColCount>30;
+    // Toolbar → query() params. Sort + hide are set from the column headers; these
+    // buttons reflect state and reset. Filter toggles a primary-not-empty clause;
+    // Group cycles the eligible select/boolean columns → group counts.
+    const groupables=built.cols.filter(c=>c.type==='select'||c.type==='boolean').map(c=>c.name);
+    const groupField=(spec.group&&spec.group.field)||'';
+    const dbTools=[
+      {icon:'eye-slash',label:hidden.length?('Fields · '+hidden.length+' hidden'):'Hide fields',active:hidden.length>0,onClick:()=>this._patchSpec(activeName,{hidden:[]})},
+      {icon:'funnel-simple',label:spec.filter?'Filter · 1':'Filter',active:!!spec.filter,onClick:()=>this._toggleFilter(activeName,primaryName)},
+      {icon:'arrows-down-up',label:(spec.sort&&spec.sort.length)?('Sort · '+spec.sort.length):'Sort',active:!!(spec.sort&&spec.sort.length),onClick:()=>this._patchSpec(activeName,{sort:[]})},
+      {icon:'rows',label:groupField?('Group · '+groupField):'Group',active:!!groupField,onClick:()=>this._cycleGroup(activeName,groupables)},
+    ];
+    const dbGroups=(groupField&&groups)?groups.map(g=>({key:g.key||'—',count:String(g.count)})):[];
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({
       dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
-      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon})), dbColTemplate, dbRows,
+      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
+      // Grouping: the group-by field's counts as chips above the grid (kanban's
+      // substrate); empty when no grouping is active.
+      dbGrouped:!!groupField, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
       // Wide-table column controls: surface how many fields are hidden behind the
       // cap and let the user expand to all fields (or collapse back).
       dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),
@@ -786,7 +816,7 @@ class Component extends DCLogic {
       dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value,dbLimit:this.DB_PAGE}),
       dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
       dbViews:views, dbViewName:'All records', dbViewIcon:'table',
-      dbTools:[{icon:'eye-slash',label:'Hide fields'},{icon:'funnel-simple',label:'Filter'},{icon:'arrows-down-up',label:'Sort'},{icon:'rows',label:'Group'}],
+      dbTools,
     }, this.dbRecordModel(state, activeName));
   }
   // One grid cell for entity `e`, column `col`. i===0 is the synthetic primary
