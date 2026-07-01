@@ -61,11 +61,16 @@ everything after it.
 *Worker + streaming parse + columnar store + `query()`. Nothing else starts
 until this exists — it is also the entire perf story.*
 
+- [x] Columnar `AminoRowStore` — per-set typed columns; `count()` O(1); standalone (never enters `state.entities`) → `public/row-store.js`
+- [x] `rowStore.query()` — filter · sort · group · search · fields · offset · limit → `{page, total, groups}`; per-type operators + boolean predicate tree; covered by `test/row-store.test.mjs` (31 assertions)
 - [ ] `public/rows.worker.js` — host the row store off the main thread
 - [ ] Streaming parser replaces `parseCSV` (fetch blob as a stream, emit row batches)
-- [ ] Columnar `AminoRowStore` — per-set typed columns; `count()` O(1); never enters `state.entities`
-- [ ] `rowStore.query()` — filter · sort · group · search · fields · offset · limit → `{page, total, groups}`
 - [ ] Re-point `buildTable` / `listSets` / the grid at the store (read windows, not full sets)
+
+> **Shipped so far:** the columnar store + `query()` spine landed as a
+> standalone, headless-tested module (`public/row-store.js`), wired into the
+> build (`assemble-index.mjs`) and the test suite. Next: move materialization
+> into `public/rows.worker.js` with a streaming parser, then re-point the grid.
 
 ### Phase 2 — Make the painted toolbar real · *1 wk* · the "up & running" ask 🟠
 *`amino-app.js` ~line 760 already renders Hide fields / Filter / Sort / Group as
