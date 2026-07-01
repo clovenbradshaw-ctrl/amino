@@ -63,14 +63,18 @@ until this exists — it is also the entire perf story.*
 
 - [x] Columnar `AminoRowStore` — per-set typed columns; `count()` O(1); standalone (never enters `state.entities`) → `public/row-store.js`
 - [x] `rowStore.query()` — filter · sort · group · search · fields · offset · limit → `{page, total, groups}`; per-type operators + boolean predicate tree; covered by `test/row-store.test.mjs` (31 assertions)
-- [ ] `public/rows.worker.js` — host the row store off the main thread
-- [ ] Streaming parser replaces `parseCSV` (fetch blob as a stream, emit row batches)
+- [x] `public/rows.worker.js` — materialize import blobs off the main thread (batched postMessage protocol) + `public/rows-worker-client.js` main-thread client with an inline fallback
+- [x] Streaming parser replaces `parseCSV` — chunked push/end CSV parser in `public/rows-materialize.js`, emits rows in batches (progressive fill); row mapping mirrors `import-rows.js`
 - [ ] Re-point `buildTable` / `listSets` / the grid at the store (read windows, not full sets)
 
-> **Shipped so far:** the columnar store + `query()` spine landed as a
-> standalone, headless-tested module (`public/row-store.js`), wired into the
-> build (`assemble-index.mjs`) and the test suite. Next: move materialization
-> into `public/rows.worker.js` with a streaming parser, then re-point the grid.
+> **Shipped so far:** the columnar store + `query()` spine
+> (`public/row-store.js`), and the off-main-thread materializer — pure
+> parse+map (`rows-materialize.js`), the worker (`rows.worker.js`), and its
+> client (`rows-worker-client.js`) — all headless-tested (`row-store` 31 +
+> `rows-materialize` 16 assertions, incl. materialize → store → query
+> end-to-end) and wired into the build. **Only the final wiring remains:**
+> point the live Database grid at `store.query()` instead of
+> `Object.values(state.entities).filter`.
 
 ### Phase 2 — Make the painted toolbar real · *1 wk* · the "up & running" ask 🟠
 *`amino-app.js` ~line 760 already renders Hide fields / Filter / Sort / Group as
