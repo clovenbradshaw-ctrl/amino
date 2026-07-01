@@ -56,6 +56,33 @@
     return { cols, rows, partitioned, partitionFromSchema: hasPartitionInSchema };
   }
 
+  // ── tableFromStore ── the O(window) path: buildTable as a thin adapter over
+  // AminoRowStore.query() instead of Object.values(state.entities).filter. Same
+  // column derivation as buildTable (declared schema fields in order, then
+  // data-only "extras" appended), but columns come from the store's complete
+  // field list and rows are just the requested page — never a full-set scan.
+  // Returns { cols, rows, total, hasMore, groups } for the grid. `schemaFields`
+  // is state.schema.fields[setName] (may be undefined). `opts` is passed through
+  // to query(): { filter, sort, group, search, offset, limit }.
+  function tableFromStore(store, setName, schemaFields, opts) {
+    opts = opts || {};
+    const allFields = store.fieldList(setName);
+    // Infer types from a bounded sample page (windowed, not a full scan).
+    const sample = store.query(setName, { limit: opts.sampleSize || 200 }).page;
+    const typeOf = name => inferType(sample.map(r => r[name]));
+    let cols;
+    if (Array.isArray(schemaFields)) {
+      const declared = new Set(schemaFields.map(f => f.name));
+      cols = schemaFields.map(f => ({ name: f.name, type: f.type, options: f.options, optionColors: f.optionColors, formula: f.formula, rollup: f.rollup, schematized: true }));
+      for (const name of allFields) if (!declared.has(name)) cols.push({ name, type: typeOf(name), schematized: false });
+    } else {
+      cols = allFields.map(name => ({ name, type: typeOf(name), schematized: false }));
+    }
+    const res = store.query(setName, opts);
+    const offset = Math.max(0, opts.offset | 0);
+    return { cols, rows: res.page, total: res.total, hasMore: (offset + res.page.length) < res.total, groups: res.groups };
+  }
+
   // ── linkedTypesFor / linksFromAnchor ── (table-view.jsx) — relational joins,
   // preferring declared schema.links, falling back to observed CON edges.
   function linkedTypesFor(entityType, state) {
@@ -221,7 +248,7 @@
   }
 
   window.AminoDB = {
-    inferType, buildTable, linkedTypesFor, linksFromAnchor,
+    inferType, buildTable, tableFromStore, linkedTypesFor, linksFromAnchor,
     augmentState, listSets, activeImportAnchors, importEntitiesOf,
   };
 })();

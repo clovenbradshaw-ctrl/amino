@@ -65,16 +65,23 @@ until this exists — it is also the entire perf story.*
 - [x] `rowStore.query()` — filter · sort · group · search · fields · offset · limit → `{page, total, groups}`; per-type operators + boolean predicate tree; covered by `test/row-store.test.mjs` (31 assertions)
 - [x] `public/rows.worker.js` — materialize import blobs off the main thread (batched postMessage protocol) + `public/rows-worker-client.js` main-thread client with an inline fallback
 - [x] Streaming parser replaces `parseCSV` — chunked push/end CSV parser in `public/rows-materialize.js`, emits rows in batches (progressive fill); row mapping mirrors `import-rows.js`
-- [ ] Re-point `buildTable` / `listSets` / the grid at the store (read windows, not full sets)
+- [~] Re-point `buildTable` / `listSets` / the grid at the store (read windows, not full sets)
+  - [x] `AminoDB.tableFromStore()` — `buildTable` as a thin adapter over `store.query()`; **parity-tested** against the legacy full-scan `buildTable` (same columns + rows) plus windowed pagination/search (`test/db-store-adapter.test.mjs`, 12 assertions)
+  - [ ] Flip `dbModel()` in `ui/amino-app.js` to the store path for import-backed sets — **needs in-app verification** (the record drawer + CRM + link resolution read `state.entities`, so the swap must keep single-record lookups working). Small, reviewable change now that parity is proven.
 
 > **Shipped so far:** the columnar store + `query()` spine
-> (`public/row-store.js`), and the off-main-thread materializer — pure
-> parse+map (`rows-materialize.js`), the worker (`rows.worker.js`), and its
-> client (`rows-worker-client.js`) — all headless-tested (`row-store` 31 +
-> `rows-materialize` 16 assertions, incl. materialize → store → query
-> end-to-end) and wired into the build. **Only the final wiring remains:**
-> point the live Database grid at `store.query()` instead of
-> `Object.values(state.entities).filter`.
+> (`public/row-store.js`); the off-main-thread materializer — pure parse+map
+> (`rows-materialize.js`), the worker (`rows.worker.js`), and its client
+> (`rows-worker-client.js`); and the `tableFromStore` adapter that makes
+> `buildTable` a thin wrapper over `query()`. All headless-tested (**59 new
+> assertions** across `row-store` / `rows-materialize` / `db-store-adapter`,
+> incl. materialize → store → query end-to-end and column/row parity with the
+> legacy path) and wired into the build + `npm test`.
+>
+> **Remaining:** the live `dbModel()` swap. Held deliberately for verification
+> in the running app rather than pushed blind — it touches the record drawer and
+> CRM paths that read `state.entities`. Parity is proven, so it's now a small,
+> low-risk change.
 
 ### Phase 2 — Make the painted toolbar real · *1 wk* · the "up & running" ask 🟠
 *`amino-app.js` ~line 760 already renders Hide fields / Filter / Sort / Group as

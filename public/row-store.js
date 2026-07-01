@@ -168,6 +168,9 @@
     const has = name => sets.has(name);
     const setNames = () => Array.from(sets.keys());
     const count = name => { const s = sets.get(name); return s ? s.n : 0; };
+    // The complete column list of a set (every non-_ field seen at load), in
+    // first-seen order — the whole domain of columns, independent of any window.
+    const fieldList = name => { const s = sets.get(name); return s ? s.fields.slice() : []; };
 
     // Reconstruct row i of a set from its columns + meta (the only place a full
     // row object is built — and only for the requested window).
@@ -245,7 +248,7 @@
       return false;
     }
 
-    return { loadSet, query, count, has, setNames, rowAt: (name, i, fields) => { const s = sets.get(name); return s ? rowAt(s, i, fields) : null; } };
+    return { loadSet, query, count, has, setNames, fieldList, rowAt: (name, i, fields) => { const s = sets.get(name); return s ? rowAt(s, i, fields) : null; } };
   }
 
   // `within` needs `now` at eval time; thread it onto every leaf's ctx by
