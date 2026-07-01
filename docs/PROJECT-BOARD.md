@@ -118,10 +118,10 @@ spine (native sets via a transient store), so all four work uniformly.*
 
 ### Phase 5 — 1M hardening · *1 wk* ⚫
 
-- [ ] Persist the columnar materialization to its own OPFS file, keyed by `import_seq` (skip re-parse on cold open)
+- [~] Per-field index for instant filter at 1M — a **lazy value index** with **equality pushdown** (`is` / `isAnyOf`, incl. inside `AND`) makes those queries O(matches), not O(N); built on first use, cached per set. Kanban's per-group `is` query now rides it. Verified by `queryStats().viaIndex` + reduced `scanned` (`row-store.test.mjs` +7). *Follow-ups:* a token/postings inverted index for free-text **search**, and a precomputed **sort permutation** per column.
+- [ ] Persist the columnar materialization to its own OPFS file, keyed by `import_seq` (skip re-parse on cold open) — **needs in-app verification** (touches the encrypted store + worker lifecycle)
 - [ ] Link / adjacency index for related records (resolve in O(degree))
-- [ ] Per-field inverted index for instant search/sort at 1M (`A#`, `Family Name`, `First Name` eagerly)
-- [ ] Meet `PERF-BASELINE.md` targets on a 1M set
+- [ ] Meet `PERF-BASELINE.md` targets on a 1M set — needs the Phase 0 perf harness + a browser run
 
 ---
 

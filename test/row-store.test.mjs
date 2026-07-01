@@ -111,4 +111,23 @@ eq(p.total, 4, 'pagination reports the full total');
 eq(p.page.length, 2, 'pagination returns exactly one window');
 eq(p.page.map(r => r['A#']), [200, 300], 'window is the correct slice of the sorted order');
 
+// ── equality pushdown: a value index serves is/isAnyOf without a full scan ──
+// Same results as a scan, but only the matching rows are visited (the Phase 5
+// win that makes kanban's per-group `is` query O(matches), not O(N)).
+const isRes = store.query('Client Info', { filter: { field: 'Relief Sought', op: 'is', value: 'Asylum' } });
+eq(isRes.total, 3, 'indexed `is` returns the same rows as a scan');
+ok(store.queryStats().viaIndex === true, 'indexed `is` is served by the value index (not a full scan)');
+ok(store.queryStats().scanned === 3 && store.queryStats().scanned < store.count('Client Info'),
+   'indexed `is` visits only the matching rows, not all N');
+// isAnyOf unions postings; an AND still filters the indexed candidates fully.
+eq(store.query('Client Info', { filter: { field: 'Relief Sought', op: 'isAnyOf', value: ['Asylum', 'Cancellation'] } }).total, 4, 'indexed isAnyOf unions postings');
+const andRes = store.query('Client Info', { filter: { op: 'and', clauses: [
+  { field: 'Relief Sought', op: 'is', value: 'Asylum' },
+  { field: 'Open', op: 'isChecked' } ] } });
+eq(andRes.total, 3, 'AND(indexed is, other) returns the correct rows');
+ok(store.queryStats().viaIndex === true && store.queryStats().scanned === 3, 'AND narrows the scan to the indexed clause candidates');
+// a non-indexable filter still works via full scan
+store.query('Client Info', { filter: { field: 'A#', op: 'gt', value: 150 } });
+ok(store.queryStats().viaIndex === false, 'a range predicate falls back to a full scan');
+
 console.log(`\nrow-store.test: ${pass} assertions passed`);
