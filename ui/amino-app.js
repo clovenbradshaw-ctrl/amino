@@ -811,6 +811,7 @@ class Component extends DCLogic {
     const viewType=spec.type||'table';
     const vtDef=[{key:'table',icon:'table',label:'Grid'}];
     if(groupables.length||viewType==='kanban') vtDef.push({key:'kanban',icon:'kanban',label:'Kanban'});
+    vtDef.push({key:'gallery',icon:'squares-four',label:'Gallery'});
     const dbViewTypes=vtDef.map(v=>({key:v.key,icon:v.icon,label:v.label,active:viewType===v.key,
       bg:viewType===v.key?'#EDE7DA':'transparent',color:viewType===v.key?'#8A5A14':'#8F95A0',
       onPick:()=>this._setViewType(activeName,v.key,groupables)}));
@@ -829,7 +830,11 @@ class Component extends DCLogic {
         })};
       }
     }
-    const dbIsKanban=viewType==='kanban'&&dbKanban.columns.length>0, dbIsTable=!dbIsKanban;
+    const dbIsKanban=viewType==='kanban'&&dbKanban.columns.length>0;
+    const dbIsGallery=viewType==='gallery';
+    const dbIsTable=!dbIsKanban&&!dbIsGallery;
+    // Gallery: the grid's already-windowed query() rows, as cards — nearly free.
+    const dbGallery={cards: dbIsGallery ? windowRows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,''),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})})) : []};
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({
@@ -840,7 +845,7 @@ class Component extends DCLogic {
       dbGrouped:!!groupField&&dbIsTable, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
       // View types (Phase 3): the switcher + the kanban board (windowed query()
       // per group). dbIsTable/dbIsKanban toggle the body; dbKanban carries columns.
-      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban,
+      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban, dbIsGallery, dbGallery,
       // Wide-table column controls: surface how many fields are hidden behind the
       // cap and let the user expand to all fields (or collapse back).
       dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),

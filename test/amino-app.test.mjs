@@ -383,6 +383,14 @@ gridBtn.onPick();
 vt = cTb.renderVals();
 ok(vt.dbIsTable === true && vt.dbIsKanban === false, 'kanban: switch back to the grid view');
 
+// 8g) Gallery — the grid's windowed query() rows as cards (nearly free).
+const galBtn = vt.dbViewTypes.find(v => v.key === 'gallery');
+ok(galBtn, 'gallery: the switcher offers Gallery');
+galBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsGallery === true && vt.dbIsTable === false, 'gallery: switches to the card layout');
+ok(vt.dbGallery.cards.length === 5 && typeof vt.dbGallery.cards[0].title === 'string', 'gallery: one card per windowed query() row');
+
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
 c9.ML = () => ({
