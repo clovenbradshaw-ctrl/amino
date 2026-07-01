@@ -121,7 +121,13 @@ spine (native sets via a transient store), so all four work uniformly.*
 - [~] Per-field index for instant filter at 1M — a **lazy value index** with **equality pushdown** (`is` / `isAnyOf`, incl. inside `AND`) makes those queries O(matches), not O(N); built on first use, cached per set. Kanban's per-group `is` query now rides it. Verified by `queryStats().viaIndex` + reduced `scanned` (`row-store.test.mjs` +7). *Follow-ups:* a token/postings inverted index for free-text **search**, and a precomputed **sort permutation** per column.
 - [ ] Persist the columnar materialization to its own OPFS file, keyed by `import_seq` (skip re-parse on cold open) — **needs in-app verification** (touches the encrypted store + worker lifecycle)
 - [ ] Link / adjacency index for related records (resolve in O(degree))
-- [ ] Meet `PERF-BASELINE.md` targets on a 1M set — needs the Phase 0 perf harness + a browser run
+- [~] Meet `PERF-BASELINE.md` targets on a 1M set — the **data-layer harness landed** (`scripts/bench-rowstore.mjs`) and the store/query numbers are in `PERF-BASELINE.md`: at 1M, first paint **0.5 ms**, cached-index filter **<1 ms**, group **67 ms**, sort **111 ms** — all under bar; free-text **search 334 ms** (linear) is the one miss, pending the token index. Browser-side (main-thread block, dropped frames, cold-open) still needs a real tab.
+
+> **Query-spine perf, verified at 1M (headless).** Two optimizations after the
+> first benchmark: an exact index hit skips the redundant per-row re-test, and a
+> predicate-free query skips building a 1M index array (direct window slice).
+> First paint went 61 ms → **0.5 ms** and cached filter 135 ms → **<1 ms** at 1M.
+> First-paint / cached-filter stay ~flat from 10k→1M — the window, not the set.
 
 ---
 
