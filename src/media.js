@@ -31,6 +31,7 @@
 
 import { getClient } from './client.js';
 import { vault } from './vault.js';
+import { gzipBytes, gunzipBytes } from './crypto/gzip.js';
 
 const HOIST_THRESHOLD = 16 * 1024;       // hoist string fields >= 16KB
 const CONTENT_SIZE_LIMIT = 24 * 1024;    // total target after hoist
@@ -276,11 +277,22 @@ export async function wipeMediaCache() {
  * store, and mirror the plaintext locally for offline reads. Returns
  * a `__media: 2` reference suitable for embedding in event content.
  */
-export async function uploadEncrypted(plaintext, { mime = 'application/octet-stream', name = 'file' } = {}) {
+export async function uploadEncrypted(plaintext, { mime = 'application/octet-stream', name = 'file', compress = false } = {}) {
   const client = getClient();
   if (!client) throw new Error('Not connected — cannot upload media');
 
-  const bytes = plaintext instanceof Uint8Array ? plaintext : new Uint8Array(plaintext);
+  let bytes = plaintext instanceof Uint8Array ? plaintext : new Uint8Array(plaintext);
+  // Optionally gzip BEFORE encrypting — shrinks the upload/download and OPFS
+  // mirror ~5–10× for tabular text, and fits far more rows under the server's
+  // max_upload_size. Only keep it if it actually helped (already-compressed
+  // inputs won't shrink). `enc` travels in the ref so reads decompress
+  // transparently; old refs without `enc` are read verbatim.
+  let enc = null;
+  const rawSize = bytes.length;
+  if (compress) {
+    try { const gz = await gzipBytes(bytes); if (gz.length < bytes.length) { bytes = gz; enc = 'gzip'; } }
+    catch (e) { console.warn('[media] gzip failed, sending uncompressed:', e?.message || e); }
+  }
   const { data, info } = await encryptAttachment(bytes);
 
   // The Matrix media endpoint accepts any MIME; we deliberately send
@@ -294,9 +306,11 @@ export async function uploadEncrypted(plaintext, { mime = 'application/octet-str
   const mxc = resp && resp.content_uri;
   if (!mxc) throw new Error('Upload returned no content_uri');
 
+  // Cache the stored (compressed, pre-encryption) bytes so the OPFS mirror is
+  // small too; reads gunzip on the way out.
   await cacheMediaBytes(mxc, bytes);
 
-  return {
+  const ref = {
     __media: 2,
     mxc,
     mime,
@@ -304,6 +318,8 @@ export async function uploadEncrypted(plaintext, { mime = 'application/octet-str
     name,
     file: info,
   };
+  if (enc) { ref.enc = enc; ref.rawSize = rawSize; } // decompressed length, for progress/UX
+  return ref;
 }
 
 /**
@@ -315,6 +331,7 @@ export async function uploadFile(file, opts = {}) {
   return uploadEncrypted(bytes, {
     mime: opts.mime || file.type || 'application/octet-stream',
     name: opts.name || file.name || 'file',
+    compress: !!opts.compress,
   });
 }
 
@@ -458,9 +475,12 @@ const inFlightMedia = new Map();           // mxc -> Promise<Uint8Array|null>
  */
 export async function getMediaBytes(ref) {
   if (!ref || !ref.mxc) return null;
+  // Stored bytes are gzip-compressed when the ref says so; decompress on the way
+  // out (both cache hits and fresh downloads). Refs without `enc` are verbatim.
+  const inflate = async bytes => (bytes && ref.enc === 'gzip' ? await gunzipBytes(bytes) : bytes);
 
   const cached = await getCachedMediaBytes(ref.mxc);
-  if (cached) return cached;
+  if (cached) return inflate(cached);
 
   const existing = inFlightMedia.get(ref.mxc);
   if (existing) return existing;
@@ -469,13 +489,14 @@ export async function getMediaBytes(ref) {
     const downloaded = await fetchMxcBytes(ref.mxc);
     if (!downloaded) return null;
 
-    let plaintext;
+    let stored;
     if (ref.__media === 2 && ref.file) {
-      plaintext = await decryptAttachment(downloaded, ref.file);
+      stored = await decryptAttachment(downloaded, ref.file);
     } else {
       // Legacy plaintext upload.
-      plaintext = downloaded;
+      stored = downloaded;
     }
+    const plaintext = stored; // the (possibly gzip) bytes to cache; inflate for the return
     // Write-behind the OPFS mirror. Caching means a second AES pass (vault
     // re-encrypt) plus a disk write over the whole blob; awaiting it here
     // would stall the caller — the import materializer waiting on these
@@ -484,7 +505,7 @@ export async function getMediaBytes(ref) {
     // populate in the background. Worst case (tab closes mid-write) the blob
     // simply re-downloads next session, exactly as if it were never cached.
     cacheMediaBytes(ref.mxc, plaintext).catch(() => {});
-    return plaintext;
+    return inflate(plaintext);
   })().catch(e => {
     console.warn('[media] decrypt failed:', e?.message || e);
     return null;

@@ -121,7 +121,35 @@ spine (native sets via a transient store), so all four work uniformly.*
 - [~] Per-field index for instant filter at 1M — a **lazy value index** with **equality pushdown** (`is` / `isAnyOf`, incl. inside `AND`) makes those queries O(matches), not O(N); built on first use, cached per set. Kanban's per-group `is` query now rides it. Verified by `queryStats().viaIndex` + reduced `scanned` (`row-store.test.mjs` +7). *Follow-ups:* a token/postings inverted index for free-text **search**, and a precomputed **sort permutation** per column.
 - [ ] Persist the columnar materialization to its own OPFS file, keyed by `import_seq` (skip re-parse on cold open) — **needs in-app verification** (touches the encrypted store + worker lifecycle)
 - [ ] Link / adjacency index for related records (resolve in O(degree))
-- [ ] Meet `PERF-BASELINE.md` targets on a 1M set — needs the Phase 0 perf harness + a browser run
+- [~] Meet `PERF-BASELINE.md` targets on a 1M set — the **data-layer harness landed** (`scripts/bench-rowstore.mjs`) and the store/query numbers are in `PERF-BASELINE.md`: at 1M, first paint **0.5 ms**, cached-index filter **<1 ms**, group **67 ms**, sort **111 ms** — all under bar; free-text **search 334 ms** (linear) is the one miss, pending the token index. Browser-side (main-thread block, dropped frames, cold-open) still needs a real tab.
+
+> **Query-spine perf, verified at 1M (headless).** Two optimizations after the
+> first benchmark: an exact index hit skips the redundant per-row re-test, and a
+> predicate-free query skips building a 1M index array (direct window slice).
+> First paint went 61 ms → **0.5 ms** and cached filter 135 ms → **<1 ms** at 1M.
+> First-paint / cached-filter stay ~flat from 10k→1M — the window, not the set.
+
+### Downloading 1M records from Matrix
+
+1M rows are **one encrypted media blob**, not 1M events — the room timeline is a
+handful of events (`import` INS + `field_plan`/`derived_set`/`file` DEFs), and
+`getMediaBytes` resolves the blob (OPFS mirror first, else the authenticated
+media endpoint), decrypts, and streams it into the worker parser. Download-once
+(OPFS), request-coalesced, off-thread parse.
+
+- [x] **gzip import blobs** (`src/crypto/gzip.js`) — compress before encrypt,
+  decompress on read, marked `enc:'gzip'` in the media ref (old blobs read
+  verbatim). Immigration CSV compresses to **~13% (≈8×)**: the 47 MB / 1M-row
+  blob → ~6 MB, so downloads are ~8× cheaper **and** ~8× more rows fit under the
+  homeserver `max_upload_size` (~50 MB) cap. Codec round-trip tested
+  (`test/gzip.test.mjs`). *Needs in-app verification (touches the encrypted media
+  path).*
+- [ ] **Chunk large imports** into multiple sub-blobs each < `max_upload_size`
+  (downloads already coalesce/parallelize) — removes the single-blob ceiling for
+  10M+.
+- [ ] **Stream download → decrypt → parse** (AES-CTR is a stream cipher;
+  `DecompressionStream` streams; incremental parse) — bounded memory + progressive
+  fill for very large blobs.
 
 ---
 
