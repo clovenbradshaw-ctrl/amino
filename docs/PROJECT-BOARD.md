@@ -98,10 +98,16 @@ spine (native sets via a transient store), so all four work uniformly.*
 
 ### Phase 3 — View types (thin renderers over `query()`) · *1–1.5 wk* 🔵
 
-- [ ] Kanban — group by a single-select; each column a windowed `query()`
+- [x] Kanban — a view type that runs one **windowed `query()` per group value**; a view-type switcher (Grid/Kanban) sets `spec.type`, columns show group counts + card windows. Covered by `amino-app.test.mjs` (+5 assertions).
 - [ ] Calendar — filter to a visible date range over a chosen date field
 - [ ] Retire hardcoded hearings/deadlines lists in favour of a real view over `NTA Date` / `Hearing` / due-date
 - [ ] Gallery — the grid `query()` with a card layout (nearly free)
+
+> **Kanban shipped.** The switcher lives in the grid toolbar; picking Kanban
+> groups by the first select/boolean column (or the active group). Each column is
+> a bounded `query()` (windowed like the grid). Calendar + gallery are the same
+> pattern (a date-range filter / a card layout) and are the remaining Phase 3
+> renderers.
 
 ### Phase 4 — Saved views as `_schema.views.*` · *0.5–1 wk* 🟣
 

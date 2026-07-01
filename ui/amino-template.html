@@ -10288,7 +10288,9 @@
           <sc-if value="{{ viewsClosed }}" hint-placeholder-val="{{ false }}"><button onclick="{{ onOpenViews }}" title="Show views" style="width:28px;height:28px;border:1px solid #EDEFF2;border-radius:6px;background:#F8FAFC;color:#8F95A0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:5px"><i class="ph ph-caret-double-right" style="font-size:13px"></i></button></sc-if>
           <span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#18202D;padding-right:6px"><i class="ph-bold ph-{{ dbViewIcon }}" style="color:#C2872B;font-size:14px"></i> {{ dbViewName }}</span>
           <span style="width:1px;height:18px;background:#E4E7EB;margin:0 5px"></span>
-          <sc-for list="{{ dbTools }}" as="tl" hint-placeholder-count="4"><button onclick="{{ tl.onClick }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;background:{{ tl.active ? '#FBF3E2' : 'transparent' }};border:none;border-radius:6px;color:{{ tl.active ? '#8A5A14' : '#5A5D63' }};font-size:12px;font-weight:{{ tl.active ? '700' : '500' }};cursor:pointer"><i class="ph ph-{{ tl.icon }}" style="font-size:14px"></i> {{ tl.label }}</button></sc-for>
+          <sc-for list="{{ dbTools }}" as="tl" hint-placeholder-count="4"><button onclick="{{ tl.onClick }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;background:{{ tl.bg }};border:none;border-radius:6px;color:{{ tl.color }};font-size:12px;font-weight:{{ tl.weight }};cursor:pointer"><i class="ph ph-{{ tl.icon }}" style="font-size:14px"></i> {{ tl.label }}</button></sc-for>
+          <span style="width:1px;height:18px;background:#E4E7EB;margin:0 5px"></span>
+          <sc-for list="{{ dbViewTypes }}" as="vt" hint-placeholder-count="2"><button onclick="{{ vt.onPick }}" title="{{ vt.label }}" style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;background:{{ vt.bg }};border:none;border-radius:6px;color:{{ vt.color }};font-size:12px;font-weight:600;cursor:pointer"><i class="ph ph-{{ vt.icon }}" style="font-size:14px"></i> {{ vt.label }}</button></sc-for>
           <span style="flex:1"></span>
           <span style="font-size:11px;color:#8F95A0;font-weight:600;margin-right:9px;font-variant-numeric:tabular-nums;white-space:nowrap">{{ dbCountText }} records</span>
           <div style="display:flex;align-items:center;gap:7px;width:210px;background:#F5F6F7;border:1px solid #E4E7EB;border-radius:7px;padding:0 9px;height:30px"><i class="ph ph-magnifying-glass" style="color:#8F95A0;font-size:13px"></i><input value="{{ dbSearch }}" oninput="{{ onDbSearch }}" placeholder="Search records…" style="flex:1;background:transparent;border:none;outline:none;color:#18202D;font-size:12px;min-width:0"></div>
@@ -10300,6 +10302,25 @@
             <button onclick="{{ onDbClearGroup }}" style="font-size:11px;color:#2747C9;background:none;border:none;cursor:pointer">Clear</button>
           </div>
         </sc-if>
+        <sc-if value="{{ dbIsKanban }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-height:0;overflow:auto;display:flex;gap:12px;padding:14px;background:#F5F6F8;align-items:flex-start">
+            <sc-for list="{{ dbKanban.columns }}" as="kc" hint-placeholder-count="3">
+              <div style="flex:0 0 264px;max-width:264px;display:flex;flex-direction:column;background:#EEF0F3;border-radius:10px;max-height:100%">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;font-size:12px;font-weight:700;color:#18202D"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kc.key }}</span><span style="font-size:11px;font-weight:600;color:#8F95A0;background:#fff;border-radius:99px;padding:1px 8px">{{ kc.count }}</span></div>
+                <div style="display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;overflow:auto">
+                  <sc-for list="{{ kc.cards }}" as="kcard" hint-placeholder-count="4">
+                    <div onclick="{{ kcard.onOpen }}" style="background:#fff;border:1px solid #E7EAEE;border-radius:8px;padding:9px 11px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.04)">
+                      <div style="font-size:12.5px;font-weight:600;color:#18202D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kcard.title }}</div>
+                      <sc-if value="{{ kcard.sub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8A93A0;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ kcard.sub }}</div></sc-if>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ kc.hasMore }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8F95A0;text-align:center;padding:4px">{{ kc.moreText }}</div></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dbIsTable }}" hint-placeholder-val="{{ true }}">
         <div class="am-sc" data-am-grid data-screen-label="{{ dbName }}" style="flex:1;min-height:0;overflow:auto">
       <div style="min-width:max-content">
         <div style="display:grid;grid-template-columns:{{ dbColTemplate }};position:sticky;top:0;z-index:5;background:#F1F3F5;border-bottom:1px solid #DDE2E7">
@@ -10326,6 +10347,7 @@
         </sc-if>
       </div>
       </div>
+        </sc-if>
       </div>
       </div>
   </div>

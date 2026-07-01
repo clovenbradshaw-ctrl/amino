@@ -368,6 +368,21 @@ vt = cTb.renderVals();
 ok(!vt.dbColumns.some(c => c.name === 'Age'), 'hide: a hidden field drops out of the columns');
 ok(vt.dbTools[0].label === 'Fields · 1 hidden', 'hide: the button reflects the hidden count');
 
+// 8f) Kanban (Phase 3) — a view type that is a windowed query() per group value.
+// cTb already has group = Status; switch to the kanban view via the switcher.
+const kanBtn = vt.dbViewTypes.find(v => v.key === 'kanban');
+ok(kanBtn, 'kanban: the view switcher offers Kanban when a groupable column exists');
+kanBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsKanban === true && vt.dbKanban.field === 'Status', 'kanban: switches to a board grouped by the select column');
+const kmap = Object.fromEntries(vt.dbKanban.columns.map(c => [c.key, c.cards.length]));
+ok(kmap.Open === 3 && kmap.Closed === 2, 'kanban: each column is a windowed query() of its group');
+ok(vt.dbKanban.columns[0].key === 'Open' && typeof vt.dbKanban.columns[0].cards[0].title === 'string', 'kanban: columns carry counts + cards with titles');
+const gridBtn = vt.dbViewTypes.find(v => v.key === 'table');
+gridBtn.onPick();
+vt = cTb.renderVals();
+ok(vt.dbIsTable === true && vt.dbIsKanban === false, 'kanban: switch back to the grid view');
+
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
 c9.ML = () => ({

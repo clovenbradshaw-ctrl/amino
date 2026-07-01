@@ -494,7 +494,7 @@ class Component extends DCLogic {
   // ── the Database view spec (the real toolbar) ── per-set { sort, group,
   // filter, hidden } that compiles into AminoRowStore.query() params. Persisted
   // per set name so switching tabs keeps each table's filter/sort/group/hide.
-  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[]}; }
+  _dbSpec(set){ const s=(this.state.dbSpecs||{})[set]; return {type:(s&&s.type)||'table',sort:(s&&s.sort)||[],group:(s&&s.group)||null,filter:(s&&s.filter)||null,hidden:(s&&s.hidden)||[]}; }
   _patchSpec(set,patch){ this.setState(st=>{ const cur=(st.dbSpecs||{})[set]||{}; return {dbSpecs:Object.assign({},st.dbSpecs,{[set]:Object.assign({},cur,patch)}), dbLimit:this.DB_PAGE}; }); }
   // Click a column header to cycle its sort: off → asc → desc → off (single-key;
   // the query engine supports multi-key, exposed later).
@@ -505,6 +505,12 @@ class Component extends DCLogic {
   _toggleFilter(set,primary){ if(this._dbSpec(set).filter){ this._patchSpec(set,{filter:null}); return; } if(!primary) return; this._patchSpec(set,{filter:{op:'and',clauses:[{field:primary,op:'isNotEmpty'}]}}); }
   // Group button: cycle through the eligible (select/boolean) columns → off.
   _cycleGroup(set,groupables){ const list=groupables||[]; if(!list.length){ this._patchSpec(set,{group:null}); return; } const cur=this._dbSpec(set).group&&this._dbSpec(set).group.field; const idx=(cur?list.indexOf(cur):-1)+1; const nextField=idx<list.length?list[idx]:null; this._patchSpec(set,{group:nextField?{field:nextField}:null}); }
+  // Switch the grid's view type; Kanban needs a group field, so auto-pick the
+  // first eligible column when none is set.
+  _setViewType(set,type,groupables){ const patch={type}; if(type==='kanban'){ const g=this._dbSpec(set).group; if((!g||!g.field)&&groupables&&groupables.length) patch.group={field:groupables[0]}; } this._patchSpec(set,patch); }
+  // A card's secondary line: the first populated field that isn't the title or
+  // the group field (kanban/gallery card subtitle).
+  _cardSub(e,primaryName,groupField){ for(const k in e){ if(k[0]==='_'||k===primaryName||k===groupField) continue; const v=e[k]; if(v==null||v===''||(Array.isArray(v)&&!v.length)) continue; return k+': '+(Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):String(v))); } return ''; }
   buildClients(state){
     const ents=state.entities||{}, notesByClient={};
     for(const a in ents){ const e=ents[a]; if(e._type==='note'){ const ci=e.client||e.ci; (notesByClient[ci]=notesByClient[ci]||[]).push({act:e.text||e.act||'',type:e.noteType||e.type||'Note',date:e.date||'',by:e.by||(String(e._sender||'').replace(/^@/,'').split(':')[0]),desc:e.desc||'',due:e.due||'',_ts:e._created||0}); } }
@@ -789,13 +795,41 @@ class Component extends DCLogic {
     // Group cycles the eligible select/boolean columns → group counts.
     const groupables=built.cols.filter(c=>c.type==='select'||c.type==='boolean').map(c=>c.name);
     const groupField=(spec.group&&spec.group.field)||'';
+    // Precompute the button styling (dc-runtime binds property paths, not
+    // expressions — no ternaries in the template).
+    const tool=(icon,label,active,onClick)=>({icon,label,active,onClick,bg:active?'#FBF3E2':'transparent',color:active?'#8A5A14':'#5A5D63',weight:active?'700':'500'});
     const dbTools=[
-      {icon:'eye-slash',label:hidden.length?('Fields · '+hidden.length+' hidden'):'Hide fields',active:hidden.length>0,onClick:()=>this._patchSpec(activeName,{hidden:[]})},
-      {icon:'funnel-simple',label:spec.filter?'Filter · 1':'Filter',active:!!spec.filter,onClick:()=>this._toggleFilter(activeName,primaryName)},
-      {icon:'arrows-down-up',label:(spec.sort&&spec.sort.length)?('Sort · '+spec.sort.length):'Sort',active:!!(spec.sort&&spec.sort.length),onClick:()=>this._patchSpec(activeName,{sort:[]})},
-      {icon:'rows',label:groupField?('Group · '+groupField):'Group',active:!!groupField,onClick:()=>this._cycleGroup(activeName,groupables)},
+      tool('eye-slash',hidden.length?('Fields · '+hidden.length+' hidden'):'Hide fields',hidden.length>0,()=>this._patchSpec(activeName,{hidden:[]})),
+      tool('funnel-simple',spec.filter?'Filter · 1':'Filter',!!spec.filter,()=>this._toggleFilter(activeName,primaryName)),
+      tool('arrows-down-up',(spec.sort&&spec.sort.length)?('Sort · '+spec.sort.length):'Sort',!!(spec.sort&&spec.sort.length),()=>this._patchSpec(activeName,{sort:[]})),
+      tool('rows',groupField?('Group · '+groupField):'Group',!!groupField,()=>this._cycleGroup(activeName,groupables)),
     ];
     const dbGroups=(groupField&&groups)?groups.map(g=>({key:g.key||'—',count:String(g.count)})):[];
+    // View types (Phase 3): thin renderers over query(). Kanban = a windowed
+    // query() per group value. The switcher offers Kanban only when the set has a
+    // groupable (select/boolean) column.
+    const viewType=spec.type||'table';
+    const vtDef=[{key:'table',icon:'table',label:'Grid'}];
+    if(groupables.length||viewType==='kanban') vtDef.push({key:'kanban',icon:'kanban',label:'Kanban'});
+    const dbViewTypes=vtDef.map(v=>({key:v.key,icon:v.icon,label:v.label,active:viewType===v.key,
+      bg:viewType===v.key?'#EDE7DA':'transparent',color:viewType===v.key?'#8A5A14':'#8F95A0',
+      onPick:()=>this._setViewType(activeName,v.key,groupables)}));
+    let dbKanban={field:'',columns:[]};
+    if(viewType==='kanban'&&qStore){
+      const kf=(spec.group&&spec.group.field)||groupables[0]||'';
+      if(kf){
+        const gcounts=DB.tableFromStore(qStore,activeName,schemaFields,{filter:spec.filter,search:dq||undefined,group:{field:kf},limit:0}).groups||[];
+        const KCARDS=this.DB_PAGE; // window each column like the grid windows rows
+        dbKanban={field:kf,columns:gcounts.map(g=>{
+          const clause=g.key==='(empty)'?{field:kf,op:'isEmpty'}:{field:kf,op:'is',value:g.key};
+          const filt=spec.filter?{op:'and',clauses:[spec.filter,clause]}:clause;
+          const cres=DB.tableFromStore(qStore,activeName,schemaFields,{filter:filt,search:dq||undefined,sort:spec.sort,offset:0,limit:KCARDS});
+          const cards=cres.rows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,kf),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})}));
+          return {key:g.key||'—',count:String(g.count),cards,hasMore:g.count>cards.length,moreText:g.count>cards.length?('+'+(g.count-cards.length)+' more in this group'):''};
+        })};
+      }
+    }
+    const dbIsKanban=viewType==='kanban'&&dbKanban.columns.length>0, dbIsTable=!dbIsKanban;
     const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     return Object.assign({
@@ -803,7 +837,10 @@ class Component extends DCLogic {
       dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
       // Grouping: the group-by field's counts as chips above the grid (kanban's
       // substrate); empty when no grouping is active.
-      dbGrouped:!!groupField, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
+      dbGrouped:!!groupField&&dbIsTable, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),
+      // View types (Phase 3): the switcher + the kanban board (windowed query()
+      // per group). dbIsTable/dbIsKanban toggle the body; dbKanban carries columns.
+      dbViewType:viewType, dbViewTypes, dbIsTable, dbIsKanban, dbKanban,
       // Wide-table column controls: surface how many fields are hidden behind the
       // cap and let the user expand to all fields (or collapse back).
       dbHasHiddenCols:hiddenCols>0, dbHiddenCols:hiddenCols, dbHiddenColsText:'+'+hiddenCols+' more field'+(hiddenCols===1?'':'s'),
