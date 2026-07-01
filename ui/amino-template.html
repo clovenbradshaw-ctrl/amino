@@ -10279,7 +10279,7 @@
           <sc-for list="{{ dbViews }}" as="v" hint-placeholder-count="4">
             <button onclick="{{ v.onPick }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:{{ v.bg }};border:none;border-radius:7px;color:{{ v.color }};font-size:12.5px;font-weight:{{ v.weight }};cursor:pointer;text-align:left;margin-bottom:1px"><i class="ph{{ v.iw }} ph-{{ v.icon }}" style="font-size:15px;color:{{ v.icolor }}"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.name }}</span><span style="font-size:10px;color:#B6BBC2;font-variant-numeric:tabular-nums">{{ v.count }}</span><sc-if value="{{ v.active }}" hint-placeholder-val="{{ false }}"><i class="ph-bold ph-check" style="font-size:11px;color:#C2872B"></i></sc-if></button>
           </sc-for>
-          <button style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Create view</button>
+          <button onclick="{{ onDbSaveView }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Save current view</button>
         </div>
       </aside>
       </sc-if>

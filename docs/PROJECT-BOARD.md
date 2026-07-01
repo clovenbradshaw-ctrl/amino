@@ -111,10 +111,10 @@ spine (native sets via a transient store), so all four work uniformly.*
 
 ### Phase 4 — Saved views as `_schema.views.*` · *0.5–1 wk* 🟣
 
-- [ ] Emit a view as a `DEF` (`anchor=null, path=_schema.views.<name>`)
-- [ ] View switcher per table; persist `{type, filter, sort, group, fields}`
-- [ ] Star / default view per set
-- [ ] Folds + syncs across staff devices (zero new infrastructure)
+- [x] Emit a view as a `DEF` (`anchor=null, path=_schema.views.<slug>`, value = `{name, set, type, sort, group, filter, hidden, dateField}`) — `_saveView`
+- [x] View switcher per table — the views rail lists saved views for the active set (from `state.schema.views`), "Save current view" persists the spec, picking one applies it, "All records" clears; `amino-app.test.mjs` +6 assertions
+- [ ] Star / default view per set — small follow-up (`_schema.viewDefault.<set>`)
+- [x] Folds + syncs across staff devices (zero new infrastructure) — a view is just another schema-log `DEF`, so a teammate who opens the room folds the same views; verified it folds into `state.schema.views` and drives the rail
 
 ### Phase 5 — 1M hardening · *1 wk* ⚫
 

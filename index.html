@@ -10292,7 +10292,7 @@
           <sc-for list="{{ dbViews }}" as="v" hint-placeholder-count="4">
             <button onclick="{{ v.onPick }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:{{ v.bg }};border:none;border-radius:7px;color:{{ v.color }};font-size:12.5px;font-weight:{{ v.weight }};cursor:pointer;text-align:left;margin-bottom:1px"><i class="ph{{ v.iw }} ph-{{ v.icon }}" style="font-size:15px;color:{{ v.icolor }}"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.name }}</span><span style="font-size:10px;color:#B6BBC2;font-variant-numeric:tabular-nums">{{ v.count }}</span><sc-if value="{{ v.active }}" hint-placeholder-val="{{ false }}"><i class="ph-bold ph-check" style="font-size:11px;color:#C2872B"></i></sc-if></button>
           </sc-for>
-          <button style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Create view</button>
+          <button onclick="{{ onDbSaveView }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;background:transparent;border:none;border-radius:7px;color:#A9AEB6;font-size:12px;cursor:pointer;text-align:left;margin-top:2px"><i class="ph ph-plus" style="font-size:14px"></i> Save current view</button>
         </div>
       </aside>
       </sc-if>
@@ -10940,6 +10940,18 @@ class Component extends DCLogic {
   // Switch the grid's view type; Kanban needs a group field, so auto-pick the
   // first eligible column when none is set.
   _setViewType(set,type,opts){ opts=opts||{}; const patch={type}, sp=this._dbSpec(set); if(type==='kanban'){ if((!sp.group||!sp.group.field)&&opts.groupables&&opts.groupables.length) patch.group={field:opts.groupables[0]}; } if(type==='calendar'){ if(!sp.dateField&&opts.dateables&&opts.dateables.length) patch.dateField=opts.dateables[0]; } this._patchSpec(set,patch); }
+  // ── saved views (Phase 4) ── a view is the spec, persisted as a schema-log
+  // DEF (anchor=null, path=_schema.views.<slug>) that folds into
+  // state.schema.views and syncs to every staff device — zero new infrastructure.
+  _slug(name){ return (String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'view'); }
+  _viewSpecFromSaved(v){ return {type:v.type||'table',sort:v.sort||[],group:v.group||null,filter:v.filter||null,hidden:v.hidden||[],dateField:v.dateField||null}; }
+  _specKey(s){ return JSON.stringify([s.type||'table',s.sort||[],s.group||null,s.filter||null,s.hidden||[],s.dateField||null]); }
+  iconForViewType(t){ return t==='kanban'?'kanban':t==='calendar'?'calendar-dots':t==='gallery'?'squares-four':'table'; }
+  // Emit the current spec as a named, shared view.
+  _saveView(set,name){ if(!name||!this.curWs) return; const sp=this._dbSpec(set); const value={name,set,type:sp.type,sort:sp.sort,group:sp.group,filter:sp.filter,hidden:sp.hidden,dateField:sp.dateField}; Promise.resolve(this.emitOp(this.curWs,this.ME().OP.DEF,{anchor:null,path:'_schema.views.'+this._slug(name),value})).then(()=>{ if(this.demo) this.scheduleRefold(); }).catch(()=>{}); }
+  _deleteView(set,slug){ if(!this.curWs) return; Promise.resolve(this.emitOp(this.curWs,this.ME().OP.DEF,{anchor:null,path:'_schema.views.'+slug,value:null})).then(()=>{ if(this.demo) this.scheduleRefold(); }).catch(()=>{}); }
+  _loadView(set,v){ this._patchSpec(set,this._viewSpecFromSaved(v)); }
+  _clearView(set){ this._patchSpec(set,{type:'table',sort:[],group:null,filter:null,hidden:[],dateField:null}); }
   // A card's secondary line: the first populated field that isn't the title or
   // the group field (kanban/gallery card subtitle).
   _cardSub(e,primaryName,groupField){ for(const k in e){ if(k[0]==='_'||k===primaryName||k===groupField) continue; const v=e[k]; if(v==null||v===''||(Array.isArray(v)&&!v.length)) continue; return k+': '+(Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):String(v))); } return ''; }
@@ -11283,8 +11295,17 @@ class Component extends DCLogic {
     const dbIsTable=!dbIsKanban&&!dbIsGallery&&!dbIsCalendar;
     // Gallery: the grid's already-windowed query() rows, as cards — nearly free.
     const dbGallery={cards: dbIsGallery ? windowRows.map(e=>({anchor:e._anchor,title:this.primaryLabel(e,primaryName)||'—',sub:this._cardSub(e,primaryName,''),onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}})})) : []};
-    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:'#FBF3E2',color:'#8A5A14',weight:'700',active:true,count:String(total),onPick:()=>{}}]
+    // Saved views (Phase 4): read state.schema.views (folded from the schema-log)
+    // for this set; the active one is whichever matches the current spec.
+    const savedViews=(state.schema&&state.schema.views)||{};
+    const curKey=this._specKey(spec);
+    const savedList=Object.keys(savedViews).map(slug=>({slug,v:savedViews[slug]})).filter(x=>x.v&&x.v.set===activeName);
+    const anyActive=savedList.some(x=>this._specKey(this._viewSpecFromSaved(x.v))===curKey);
+    const views=[{name:'All records',icon:'table',iw:'-bold',icolor:'#C2872B',bg:!anyActive?'#FBF3E2':'transparent',color:!anyActive?'#8A5A14':'#5A5D63',weight:!anyActive?'700':'500',active:!anyActive,count:String(total),onPick:()=>this._clearView(activeName)}]
+      .concat(savedList.map(x=>{ const act=this._specKey(this._viewSpecFromSaved(x.v))===curKey; return {name:x.v.name||x.slug,icon:this.iconForViewType(x.v.type),iw:'',icolor:act?'#C2872B':'#9aa3ad',bg:act?'#FBF3E2':'transparent',color:act?'#8A5A14':'#5A5D63',weight:act?'700':'500',active:act,count:'',onPick:()=>this._loadView(activeName,x.v),onDelete:()=>this._deleteView(activeName,x.slug)}; }))
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
+    const activeView=savedList.find(x=>this._specKey(this._viewSpecFromSaved(x.v))===curKey);
+    const onDbSaveView=()=>{ const nm=(typeof prompt==='function')?prompt('Name this view'):null; if(nm&&nm.trim()) this._saveView(activeName,nm.trim()); };
     return Object.assign({
       dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
       dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
@@ -11305,7 +11326,7 @@ class Component extends DCLogic {
       onDbMore:()=>this.setState(st=>({dbLimit:(st.dbLimit||this.DB_PAGE)+300})),
       dbSearch:S.dbSearch, onDbSearch:(e)=>this.setState({dbSearch:e.target.value,dbLimit:this.DB_PAGE}),
       dbViewSearch:S.dbViewSearch, onDbViewSearch:(e)=>this.setState({dbViewSearch:e.target.value}),
-      dbViews:views, dbViewName:'All records', dbViewIcon:'table',
+      dbViews:views, dbViewName:activeView?(activeView.v.name||activeView.slug):'All records', dbViewIcon:activeView?this.iconForViewType(activeView.v.type):'table', onDbSaveView,
       dbTools,
     }, this.dbRecordModel(state, activeName));
   }

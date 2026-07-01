@@ -413,6 +413,43 @@ ok(vc.dbIsCalendar === true && vc.dbCalendar.field === 'Hearing', 'calendar: lay
 ok(vc.dbCalendar.days.length === 2, 'calendar: rows bucket into distinct days');
 ok(vc.dbCalendar.days[0].date === '2026-03-01' && vc.dbCalendar.days[0].cards.length === 2, 'calendar: the first day holds its two records, sorted by date');
 
+// 8i) Saved views (Phase 4) — the current spec persists as a schema-log DEF
+// (_schema.views.<slug>) that folds into state.schema.views and drives the rail.
+const cV = new Component({});
+const vEvents = [ ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['client'] }) ];
+['Lopez', 'Nguyen'].forEach((nm, i) => {
+  const a = ME.makeAnchor('client', { i }, '@a', i);
+  vEvents.push(ev(ME.OP.INS, { anchor: a, entity_type: 'client', payload: {} }));
+  vEvents.push(ev(ME.OP.DEF, { anchor: a, path: 'Name', value: nm }));
+});
+cV.curWs = '!ws1'; cV.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cV.state.connected = true; cV.state.view = 'db'; cV.state.dbTable = 'client';
+const vState = ME.fold(vEvents);
+cV._liveState = vState; cV._renderState = vState;
+
+// Save the current spec (a sort) → a schema-log DEF at _schema.views.<slug>.
+let emitted = null;
+cV.emitOp = (room, op, content) => { emitted = { room, op, content }; return Promise.resolve('a'); };
+cV._patchSpec('client', { sort: [{ field: 'Name', dir: 'asc' }] });
+cV._saveView('client', 'Open Asylum');
+ok(emitted && emitted.content.path === '_schema.views.open-asylum', 'save: emits a schema-log DEF at _schema.views.<slug>');
+ok(emitted.content.anchor === null && emitted.content.value.set === 'client' && emitted.content.value.sort[0].field === 'Name',
+   'save: the DEF carries the spec + set (folds into state.schema.views, syncs to staff)');
+
+// A folded saved view drives the rail; picking it applies the spec.
+cV._renderState = Object.assign({}, vState, { schema: Object.assign({}, vState.schema, {
+  views: { 'open-asylum': { name: 'Open Asylum', set: 'client', type: 'table', sort: [{ field: 'Name', dir: 'desc' }], group: null, filter: null, hidden: [], dateField: null } },
+}) });
+cV._clearView('client');
+let vv = cV.renderVals();
+ok(vv.dbViews[0].active === true && vv.dbViews[0].name === 'All records', 'views: All records is active when the spec is unsaved');
+const savedRow = vv.dbViews.find(x => x.name === 'Open Asylum');
+ok(savedRow, 'views: a folded saved view appears in the rail for its set');
+savedRow.onPick();
+vv = cV.renderVals();
+ok(cV._dbSpec('client').sort[0].dir === 'desc', 'views: picking a saved view applies its spec');
+ok(vv.dbViewName === 'Open Asylum' && vv.dbViews.find(x => x.name === 'Open Asylum').active === true, 'views: the loaded view is marked active');
+
 // 9) Sync & storage page — renders the bridge's sync/storage snapshot.
 const c9 = new Component({});
 c9.ML = () => ({
