@@ -98,7 +98,7 @@ class Component extends DCLogic {
     // dbTable:'' / dbView:{} — the Database view is now set-driven (dbModel),
     // not the old fixed three-table map. booting — the cold-boot resume flag
     // from PR #32's duplicate-login fix. Both kept.
-    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, dbShowAllCols:false, syncSnap:null, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
+    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, dbShowAllCols:false, syncSnap:null, airtableOpen:false, airtableTicket:0, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
       connected:false, connecting:false, booting:false, wsSyncing:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live changes, and adopt a restored
@@ -193,7 +193,7 @@ class Component extends DCLogic {
     this.setState({connected:true,demo:true,connecting:false,booting:false,loginErr:'',loginPass:'',session:{homeserver:'demo://aminoimmigration',userId:'@demo:aminoimmigration.com'},view:'spaces'});
     this.loadWorkspaces();
   }
-  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } if(this._syncTimer){ clearTimeout(this._syncTimer); this._syncTimer=null; } this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this._resetFoldCaches(); this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm',syncSnap:null}); }
+  disconnect(){ try{ if(!this.demo&&this.ML()&&this.ML().logout) this.ML().logout(); }catch(e){} if(this._wsPollTimer){ clearTimeout(this._wsPollTimer); this._wsPollTimer=null; } if(this._syncTimer){ clearTimeout(this._syncTimer); this._syncTimer=null; } this._detachAirtableCoord(); this._openedWs=null; this.clients=[]; this.workspaces=[]; this.curWs=null; this.demo=false; this._resetFoldCaches(); this.setState({connected:false,demo:false,booting:false,wsSyncing:false,loginPass:'',cur:0,view:'crm',syncSnap:null,airtableOpen:false}); }
   // Drop every cached fold + projection so a new session never reads a prior
   // session's (or a different namespace's) state. Cheap; the next fold rebuilds.
   _resetFoldCaches(){ this._foldCache={}; this._builtCache=null; this._colCache=null; this._liveState=null; this._renderState=null; this._renderedRoom=null; this._renderedVer=-1; this._renderedWsSig=''; this._renderVer++; this._importRows={}; this._importRowsVer++; }
@@ -385,6 +385,8 @@ class Component extends DCLogic {
       this._syncRowStore(state);
       this.clients=this.demo ? this.buildClients(state) : this.projectLive(state);
       if(!this.demo) this.materializeLive(state);
+      // Light up Airtable two-way sync for this room once we hold its fold.
+      this._syncAirtableCoord();
       let cur=this.state.cur; if(cur>=this.clients.length) cur=0;
       this.setState({cur,vals:{},extraNotes:{}});
     }catch(e){ this.forceUpdate(); }
@@ -398,6 +400,74 @@ class Component extends DCLogic {
     const run=()=>{ this._refoldQueued=false; this.refold(); };
     if(typeof requestAnimationFrame==='function') requestAnimationFrame(run);
     else setTimeout(run,16);
+  }
+
+  // ── Airtable two-way sync ─────────────────────────────────────────────────
+  // The engine (airtable-sync.js), turn-taking coordinator (airtable-coordinator.js)
+  // and import dialog (airtable-import.jsx → window.AirtableSchemaModal) are the
+  // foundation's exact modules; the backend hooks they call (MatrixLive.importFile
+  // / the WCK-sealed shared PAT / the _recordId·_deleted·import_seq shadow in
+  // db-data.js) already exist in AMINO. This just wires them into the app shell.
+
+  // Which Airtable base this workspace is synced to, discovered from the imported
+  // entities themselves (source:'airtable' → airtable_base). A workspace is
+  // typically one base, so pick the base with the most imported tables. null when
+  // nothing Airtable was ever imported → sync stays dormant (bare-metal parity).
+  airtableBaseId(){
+    const st=this._liveState; if(!st||!st.entities) return null;
+    const tally={};
+    for(const e of Object.values(st.entities)){
+      if(e&&e._type==='import'&&e.source==='airtable'&&e.airtable_base){
+        tally[e.airtable_base]=(tally[e.airtable_base]||0)+1;
+      }
+    }
+    let best=null,n=-1; for(const k in tally){ if(tally[k]>n){ n=tally[k]; best=k; } }
+    return best;
+  }
+
+  // Attach/detach window.AirtableCoord for the open room. Idempotent: keyed on
+  // (roomId|baseId) so a re-fold doesn't re-attach, and only a real change (room
+  // switch, or a first Airtable import landing) re-runs it. Runs regardless of the
+  // active view so a raised hand keeps pulling in the background.
+  _syncAirtableCoord(){
+    const Coord=window.AirtableCoord; if(!Coord) return;
+    const S=this.state;
+    const live=!!(S.session&&!this.demo&&this.curWs&&String(this.curWs).startsWith('!'));
+    const baseId=live?this.airtableBaseId():null;
+    const sig=(live&&baseId)?(this.curWs+'|'+baseId):'';
+    if(sig===this._atCoordSig) return;
+    this._atCoordSig=sig;
+    if(!sig){ try{ if(Coord.status&&Coord.status().attached) Coord.detach(); }catch(e){} return; }
+    let displayName=null;
+    try{ displayName=(this.ML().getMyDisplayName&&this.ML().getMyDisplayName())||null; }catch(e){}
+    try{
+      Coord.attach({
+        roomId:this.curWs, baseId, userId:S.session.userId, displayName,
+        getState:()=>this._liveState||this.foldRoom(this.curWs),
+        emit:(op,content)=>this.emitOp(this.curWs,op,content),
+        log:(m)=>{ try{ console.debug('[airtable]',m); }catch(e){} },
+      });
+    }catch(e){ this._atCoordSig=''; console.warn('[amino] airtable coord attach failed:',e); }
+  }
+  _detachAirtableCoord(){
+    this._atCoordSig='';
+    try{ const C=window.AirtableCoord; if(C&&C.status&&C.status().attached) C.detach(); }catch(e){}
+  }
+
+  // The Airtable import dialog (window.AirtableSchemaModal) — connect with a PAT,
+  // pick a base, pull its schema + records into this workspace. A fresh ticket
+  // remounts the dialog each open. Needs a live room to store the row blobs.
+  openAirtable(){
+    if(this.demo||!this.curWs||!String(this.curWs).startsWith('!')){
+      this.toast('Open a live workspace first to import from Airtable.'); return;
+    }
+    this.setState({airtableOpen:true, airtableTicket:(this.state.airtableTicket||0)+1, spacePickerOpen:false});
+  }
+  closeAirtable(){
+    this.setState({airtableOpen:false});
+    // A schema/import just landed → re-fold so the new tables (and the base the
+    // coordinator watches) appear immediately.
+    this.scheduleRefold();
   }
   // The namespace the engine folds under for a room's events (demo seed vs the
   // live bridge namespace). Part of the fold-cache key so a namespace switch
@@ -1111,6 +1181,7 @@ class Component extends DCLogic {
       workspaceNav:[{name:'All spaces',icon:'squares-four',iw:isSpaces?'-bold':'',icolor:isSpaces?'#C2872B':'#8F95A0',bg:isSpaces?'#FBF3E2':'transparent',color:isSpaces?'#8A5A14':'#46505B',weight:isSpaces?'700':'600',count:String(this.workspaces.length),hasCaret:false,onPick:()=>this.backToSpaces()}].concat(this.workspaces.map(w=>{const on=this.curWs===w.roomId&&isCrm;return {name:w.name,icon:'identification-card',iw:on?'-bold':'',icolor:on?'#C2872B':'#8F95A0',bg:on?'#FBF3E2':'transparent',color:on?'#8A5A14':'#46505B',weight:on?'700':'500',count:w.roomId===this.curWs?String(this.clients.length):'',hasCaret:false,onPick:()=>this.selectWorkspace(w.roomId)};})).concat([
         {name:'New workspace',icon:'plus',iw:'',icolor:'#0F7048',bg:'transparent',color:'#0F7048',weight:'600',count:'',hasCaret:false,onPick:()=>this.createWorkspace()},
         {name:'Database',icon:'database',iw:isDb?'-bold':'',icolor:isDb?'#C2872B':'#8F95A0',bg:isDb?'#FBF3E2':'transparent',color:isDb?'#8A5A14':'#46505B',weight:isDb?'700':'500',count:String(this.clients.length),hasCaret:false,onPick:()=>this.setState({view:'db'})},
+        {name:'Import Airtable',icon:'table',iw:'',icolor:(!this.demo&&this.curWs)?'#8F95A0':'#C6CAD0',bg:'transparent',color:(!this.demo&&this.curWs)?'#46505B':'#AEB4BC',weight:'500',count:'',hasCaret:false,onPick:()=>this.openAirtable()},
         {name:'Sync & storage',icon:'cloud-arrow-down',iw:isSync?'-bold':'',icolor:isSync?'#C2872B':'#8F95A0',bg:isSync?'#FBF3E2':'transparent',color:isSync?'#8A5A14':'#46505B',weight:isSync?'700':'500',count:'',hasCaret:false,onPick:()=>this.openSync()},
       ]),
       hasFavs:S.favs.length>0,
@@ -1138,6 +1209,21 @@ class Component extends DCLogic {
       meSub:(S.session&&S.session.userId)?('signed in · '+(String(S.session.userId).split(':')[1]||this.HOMESERVER.replace(/^https?:\/\//,''))):'app.aminoimmigration.com',
       // Spaces launchpad → a way into the Sync & storage page too.
       onOpenSync:()=>this.openSync(),
+      // ── Airtable two-way sync surfaces (raw-React globals mounted via <x-import>) ──
+      // The import dialog (window.AirtableSchemaModal) opens over everything; the
+      // Sync-page panel (window.AirtableSyncPanel) shares/reads the WCK-sealed PAT,
+      // raises a hand to pull, and lists per-table sync. Props are passed straight
+      // through dc-runtime's <x-import> (camelCase preserved via sc-camel-*).
+      airtableOpen:!!S.airtableOpen,
+      airtableTicket:S.airtableTicket||0,
+      atImport:{id:S.airtableTicket||0},
+      atRoomId:this.curWs||'',
+      atState:this._liveState||{},
+      atEmit:(op,content)=>this.emitOp(this.curWs,op,content),
+      onOpenAirtable:()=>this.openAirtable(),
+      onCloseAirtable:()=>this.closeAirtable(),
+      atRoom:this.curWs?{id:this.curWs,title:((this.workspaces.find(w=>w.roomId===this.curWs)||{}).name)||'workspace'}:null,
+      atSession:S.session?{mxid:S.session.userId,demo:!!this.demo,stale:!!(this.ML&&this.ML()&&this.ML().isStale&&this.ML().isStale())}:null,
       // Database view-model — tabs, columns, rows, views rail, record drawer.
       ...db,
       // Sync & storage view-model (only computed when that page is open).

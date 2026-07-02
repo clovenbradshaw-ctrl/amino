@@ -34,6 +34,7 @@ const html = `<!doctype html>
 <meta name="description" content="Encrypted case-management for RK Lacy Law — built on the matrix-events backend (no database, no API keys, end-to-end encrypted).">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="airtable-sync-ui.css">
 <meta name="theme-color" content="#faf9f5">
 </head>
 <body>
@@ -75,6 +76,21 @@ const html = `<!doctype html>
 <script src="rows-materialize.js"></script>
 <script src="rows-worker-client.js"></script>
 <script src="data-chat.js"></script>
+<!-- ── Airtable two-way sync (ported from the bare-metal foundation) ──────────
+     Same engine, coordinator and import/schema modules as the foundation. The
+     backend hooks they need (window.MatrixLive.importFile / shareAirtableToken /
+     getSharedAirtableToken / getAirtableTokenInfo / revokeAirtableToken, and the
+     _recordId/_deleted/import_seq shadow reconciliation in db-data.js) already
+     exist in AMINO — these just light them up. -->
+<script src="airtable-schema.js"></script>
+<script src="airtable-sync.js"></script>
+<script src="airtable-coordinator.js"></script>
+<!-- Babel transforms the two JSX view modules into window.AirtableSchemaModal
+     (the import dialog) and window.AirtableSyncPanel (the Sync-page surface),
+     mounted into the dc-runtime tree via <x-import component-from-global-scope>. -->
+<script src="vendor/babel.js"></script>
+<script type="text/babel" data-presets="react" src="airtable-import.jsx"></script>
+<script type="text/babel" data-presets="react" src="airtable-panel.jsx"></script>
 <!-- Design-component runtime: binds the <x-dc> template to the Component view-model -->
 <script src="dc-runtime.js"></script>
 </body>
