@@ -6,7 +6,8 @@
  *   PUSH  (workspace → Airtable):  every member drains their OWN local changes
  *         automatically. No hand needed — each change is authored once, so it's
  *         pushed once; nobody duplicates anyone. Implemented as a pluggable
- *         `window.AirtablePush` drain (staged — see the seam at bottom).
+ *         `window.AirtablePush` drain (airtable-push.js) started at the seam
+ *         below whenever a token is held.
  *
  *   PULL  (Airtable → workspace):  turn-based. A member RAISES A HAND to claim
  *         the puller role; exactly one member pulls at a time so N clients don't
@@ -303,18 +304,19 @@
     },
 
     // ── PUSH seam ──
-    // The symmetric "operator log → Airtable" drain is a SEPARATE module
-    // (window.AirtablePush), the same way airtable-sync.js plugs in for PULL.
-    // When it's present we start it for THIS member's own changes (no hand —
-    // push is automatic for everyone). Until then this is a no-op and status()
-    // reports `pushPending` so the UI can say push isn't wired yet.
+    // The symmetric "workspace edits → Airtable" drain is a SEPARATE module
+    // (window.AirtablePush / airtable-push.js), the same way airtable-sync.js
+    // plugs in for PULL. When it's present we start it for THIS member's own
+    // changes (no hand — push is automatic for everyone). If the module is
+    // absent (older build) this is a no-op and status() reports `pending` so the
+    // UI can say push isn't wired yet.
     _drivePush(token) {
       const c = this._ctx;
       const can = !!token && !!window.AirtablePush?.start;
       if (can && !this._pushStarted) {
         this._pushStarted = true;
         Promise.resolve(window.AirtablePush.start({
-          roomId: c.roomId, baseId: c.baseId, token,
+          roomId: c.roomId, baseId: c.baseId, token, userId: c.userId,
           getState: c.getState, emit: c.emit, log: c.log,
         })).catch(e => {
           this._pushStarted = false;
@@ -354,11 +356,17 @@
         // available to all members, not just the active puller.
         airtableTables: airtableTablesFor(state, c.baseId, this._baseTables),
         pull: (window.AirtableSync?.status && window.AirtableSync.status()) || { running: false },
-        push: {
-          available: pushAvailable,
-          running: this._pushStarted,
-          pending: !pushAvailable,   // the drain module hasn't been added yet
-        },
+        push: (() => {
+          const ps = (pushAvailable && window.AirtablePush.status && window.AirtablePush.status()) || {};
+          return {
+            available: pushAvailable,
+            running: this._pushStarted,
+            pending: !pushAvailable,   // the drain module hasn't been added yet
+            lastPush: ps.lastPush || 0,
+            lastError: ps.lastError || null,
+            pushed: ps.pushed || 0,
+          };
+        })(),
       };
       this._lastStatus = st;
       return st;

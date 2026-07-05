@@ -255,6 +255,70 @@ c8a.state.dbSearch = 'fam299';
 v8a = c8a.renderVals();
 ok(v8a.dbTotal === 1 && v8a.dbRows.length === 1, 'store grid: search is a windowed query() over the store');
 ok(v8a.dbRows[0].cells[0].text === 'Fam299', 'store grid: the matching row renders');
+ok(c8a.renderVals().dbIsAirtable === false, 'store grid: a non-Airtable import shows no Airtable affordance');
+
+// 8a-2) An Airtable-sourced table surfaces its provenance + an on-demand pull in
+// the grid header — answering "how do I sync from Airtable" where the user looks,
+// not on a settings page. With no token globals stubbed, _airtableStatus reports
+// not-connected, so the CTA routes the user to connect a token.
+const cAt = new Component({});
+const impAt = ME.makeAnchor('import', { s: 'Cases' }, '@a', 9);
+const atState = ME.fold([
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['Cases'] }),
+  ev(ME.OP.INS, { anchor: impAt, entity_type: 'import', payload: {} }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'derived_set', value: 'Cases' }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'field_plan', value: [{ name: 'Matter', csvIdx: 0, type: 'text' }] }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'rows_imported', value: 1 }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'source', value: 'airtable' }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'airtable_base', value: 'appZZ' }),
+]);
+cAt.curWs = '!ws1'; cAt.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cAt.state.connected = true; cAt.state.view = 'db'; cAt.state.dbTable = 'Cases';
+cAt._liveState = atState; cAt._renderState = atState;
+cAt._importRows = { [impAt]: [{ _anchor: impAt + '#r0', _type: 'Cases', Matter: 'Doe' }] };
+cAt._syncRowStore(atState);
+const vAt = cAt.renderVals();
+ok(vAt.dbIsAirtable === true, 'db: an Airtable-sourced table is flagged in the grid header');
+ok(vAt.dbAtBase === 'appZZ', 'db: the Airtable base id is exposed to the header');
+ok(/Airtable/.test(vAt.dbAtLabel), 'db: the status pill names Airtable');
+ok(vAt.dbAtConnected === false && vAt.dbAtCta === 'Connect Airtable', 'db: with no token shared, the CTA points to connecting Airtable');
+ok(typeof vAt.onDbSyncAirtable === 'function', 'db: the header exposes a sync-from-Airtable action');
+
+// 8a-3) Editing an imported Airtable row copy-on-write PROMOTES it, so the push
+// drain can map the local edit to its upstream record. Most imported rows live
+// only in the cold blob (not the fold); the first edit must INS them whole with
+// their _recordId + _origin, then DEF the field — otherwise push sees nothing.
+const cPr = new Component({});
+cPr.curWs = '!ws1'; cPr.demo = false;
+const prImp = ME.makeAnchor('import', { s: 'Client Info' }, '@a', 1);
+cPr._liveState = ME.fold([
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['Client Info'] }),
+  ev(ME.OP.INS, { anchor: prImp, entity_type: 'import', payload: {} }),
+  ev(ME.OP.DEF, { anchor: prImp, path: 'derived_set', value: 'Client Info' }),
+  ev(ME.OP.DEF, { anchor: prImp, path: 'source', value: 'airtable' }),
+  ev(ME.OP.DEF, { anchor: prImp, path: 'airtable_base', value: 'appZZ' }),
+]);
+const rowA = prImp + '#r0'; // a blob-only imported row (in renderState, not the fold)
+cPr._renderState = { entities: { ...cPr._liveState.entities, [rowA]: { _anchor: rowA, _type: 'Client Info', _recordId: 'recABC', 'Family Name': 'Vega' } }, connections: [], partitions: {}, schema: cPr._liveState.schema };
+cPr.clients = [{ anchor: rowA, f: { 'Family Name': 'Vega' }, notes: [], rel: [], id: 0 }];
+const captured = [];
+cPr.emitOp = (room, op, content) => { captured.push({ op, content }); return Promise.resolve('x'); };
+await cPr.setVal(0, 'Case Status', 'Open');
+ok(captured.length === 2, 'editing an imported row emits a promote INS + the field DEF');
+ok(captured[0].op === ME.OP.INS && captured[0].content.entity_type === 'Client Info' &&
+   captured[0].content.payload._recordId === 'recABC' && captured[0].content.payload._origin === 'airtable',
+   'the promote INS carries the row\'s Airtable record id + origin so push can map it');
+ok(captured[1].op === ME.OP.DEF && captured[1].content.path === 'Case Status' && captured[1].content.anchor === rowA,
+   'the field edit DEFs onto the promoted anchor');
+await cPr.setVal(0, 'Country', 'Peru');
+ok(captured.filter(e => e.op === ME.OP.INS).length === 1, 'a second edit does not re-promote (a single INS)');
+// A non-Airtable / non-imported edit is unaffected — a plain DEF, no promote.
+const cPlain = new Component({});
+cPlain.curWs = '!ws1'; cPlain.demo = false; cPlain._liveState = { entities: {} };
+cPlain.clients = [{ anchor: 'client_x', f: {}, notes: [], rel: [], id: 0 }];
+const cap2 = []; cPlain.emitOp = (room, op, content) => { cap2.push({ op, content }); return Promise.resolve('x'); };
+await cPlain.setVal(0, 'First Name', 'Ana');
+ok(cap2.length === 1 && cap2[0].op === ME.OP.DEF, 'a native (non-imported) edit stays a single plain DEF — no spurious promote');
 
 // 8b) Column layout — Airtable/Softr fidelity. The grid leads with the table's
 // PRIMARY field, shown once (no synthetic-"Name" + real-"Name" duplicate), and a

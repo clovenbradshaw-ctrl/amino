@@ -130,4 +130,51 @@ ok(store.queryStats().viaIndex === true && store.queryStats().scanned === 3, 'AN
 store.query('Client Info', { filter: { field: 'A#', op: 'gt', value: 150 } });
 ok(store.queryStats().viaIndex === false, 'a range predicate falls back to a full scan');
 
+// ── per-row search blob: fast free-text search that preserves semantics (Phase 5) ──
+// Search folds each row's text into one cached lowercased string, then does a
+// single includes() per row. Same substring semantics as the old per-cell scan;
+// here we prove identical results to a brute-force reference across needle shapes.
+const FAM = ['Lopez', 'Nguyen', 'Adams', 'Zimmer', 'Okafor', 'Garcia', 'Silva', 'Cohen', 'Tran', 'Khan'];
+const REL = ['Asylum', 'Cancellation', 'Adjustment', 'TPS'];
+const big = [];
+for (let i = 0; i < 6000; i++) {
+  big.push({ _anchor: 'b#' + i, _type: 'C', 'Family Name': FAM[i % FAM.length], 'A#': 100000 + i, 'Relief Sought': REL[i % REL.length], Note: (i === 4242 ? 'FLAGGED for review' : '') });
+}
+const bs = RS.create();
+bs.loadSet('Big', big);
+// Brute-force reference: the exact substring semantics query() must preserve.
+const linear = needle => big.filter(r => Object.keys(r).some(k => k.charCodeAt(0) !== 95 && String(r[k]).toLowerCase().includes(needle))).length;
+
+// (a) a family name — same total as the reference scan, served by the blob
+const okRes = bs.query('Big', { search: 'okafor', limit: 10 });
+eq(okRes.total, linear('okafor'), 'blob search matches the reference scan (family name)');
+ok(bs.queryStats().searchViaBlob === true, 'the default (all-field) search rode the cached blob');
+
+// (b) a needle in exactly one row (a unique note), matched case-insensitively
+const oneRes = bs.query('Big', { search: 'flagged', limit: 10 });
+eq(oneRes.total, 1, 'blob search finds the single matching row');
+eq(oneRes.page[0]._anchor, 'b#4242', 'and returns exactly that row (case-insensitive vs stored "FLAGGED")');
+
+// (c) an impossible needle → 0
+eq(bs.query('Big', { search: 'zzqx' }).total, 0, 'a needle that matches nothing returns nothing');
+
+// (d) a mid-word substring still matches (substring, not word-only, semantics)
+eq(bs.query('Big', { search: 'kafo' }).total, linear('kafo'), 'a mid-word substring matches (true substring semantics)');
+
+// (e) a numeric column value is searchable via its coerced string
+eq(bs.query('Big', { search: '100000' }).total, linear('100000'), 'numeric A# values are searchable through the blob');
+
+// (f) search composes with a filter (both constraints enforced)
+const combo = bs.query('Big', { search: 'okafor', filter: { field: 'Relief Sought', op: 'is', value: 'Asylum' } });
+eq(combo.total, big.filter(r => r['Family Name'] === 'Okafor' && r['Relief Sought'] === 'Asylum').length,
+   'search + filter intersect correctly');
+
+// (g) a caller-restricted searchFields subset bypasses the all-field blob (no over-match)
+const scoped = bs.query('Big', { search: 'okafor', searchFields: ['Relief Sought'] });
+eq(scoped.total, 0, 'searchFields subset scopes the match (Okafor is not in Relief Sought)');
+ok(bs.queryStats().searchViaBlob === false, 'a searchFields subset falls back to the per-field scan');
+
+// (h) the 4-row set above is unaffected — same results as before the blob landed
+eq(store.query('Client Info', { search: 'lopez' }).total, 1, 'small-set search still correct (regression guard)');
+
 console.log(`\nrow-store.test: ${pass} assertions passed`);

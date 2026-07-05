@@ -211,8 +211,13 @@
                 Your changes sync <b>TO Airtable</b> automatically — everyone pushes their own edits.{' '}
                 {push.pending
                   ? <span className="warn">push drain not loaded yet (staged)</span>
-                  : push.running ? 'drain active.' : 'idle.'}
+                  : push.running
+                    ? <>drain active{push.lastPush ? <> · last push {relTime(push.lastPush)}</> : ''}{push.pushed ? <> · {push.pushed} record{push.pushed === 1 ? '' : 's'} pushed</> : ''}.</>
+                    : 'idle.'}
               </span>
+              {push.lastError && (
+                <span className="warn">push error: {push.lastError}</span>
+              )}
             </div>
 
             {/* ── Pull (FROM Airtable) — raise hand ── */}

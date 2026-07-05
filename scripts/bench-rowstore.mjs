@@ -70,7 +70,8 @@ q('filter is Asylum  (2nd call: index cached)', { filter: { field: 'Relief Sough
 q('kanban group by Case Status (counts)', { group: { field: 'Case Status' }, limit: 0 });
 q('kanban column: is "Hearing Set" (indexed)', { filter: { field: 'Case Status', op: 'is', value: 'Hearing Set' }, limit: 100 });
 q('sort by A# desc, page 1', { sort: [{ field: 'A#', dir: 'desc' }], limit: 100 });
-q('free-text search "okafor" (linear scan)', { search: 'okafor', limit: 100 });
+q('search "okafor" (1st call: builds search blob)', { search: 'okafor', limit: 100 });
+q('search "okafor" (2nd call: blob cached)', { search: 'okafor', limit: 100 });
 
 const m = process.memoryUsage();
 console.log(`\n  peak memory: rss ${mb(m.rss)}, heapUsed ${mb(m.heapUsed)}\n`);

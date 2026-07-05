@@ -27,6 +27,8 @@ const timeline = [
   ev(ME.OP.DEF, { anchor: imp1, path: 'derived_set', value: 'Client Info' }),
   ev(ME.OP.DEF, { anchor: imp1, path: 'field_plan', value: [{ name: 'First Name', csvIdx: 0, type: 'text' }, { name: 'Family Name', csvIdx: 1, type: 'text' }] }),
   ev(ME.OP.DEF, { anchor: imp1, path: 'rows_imported', value: 2 }),
+  ev(ME.OP.DEF, { anchor: imp1, path: 'source', value: 'airtable' }),
+  ev(ME.OP.DEF, { anchor: imp1, path: 'airtable_base', value: 'appABC123' }),
   ev(ME.OP.INS, { anchor: imp2, entity_type: 'import', payload: {} }),
   ev(ME.OP.DEF, { anchor: imp2, path: 'derived_set', value: 'Case Master View' }),
   ev(ME.OP.DEF, { anchor: imp2, path: 'field_plan', value: [{ name: 'Matter', csvIdx: 0, type: 'text' }, { name: 'Client', link: { to: 'Client Info', rel: 'client' }, jsonKey: 'Client' }] }),
@@ -57,6 +59,10 @@ const sets = DB.listSets(state, rs);
 ok(sets.map(s => s.name).includes('Client Info') && sets.map(s => s.name).includes('Case Master View'), 'listSets enumerates every imported set');
 ok(sets.find(s => s.name === 'Client Info').expected === 2, 'listSets reports the imported row total (folds before the blob streams in)');
 ok(!sets.some(s => s.name === 'import'), 'the internal `import` carrier is not surfaced as a table');
+// Airtable provenance surfaces on the set so the Database view can offer a pull.
+const ci = sets.find(s => s.name === 'Client Info'), cm = sets.find(s => s.name === 'Case Master View');
+ok(ci.airtable === true && ci.airtableBase === 'appABC123', 'listSets marks an Airtable-sourced set with its base id');
+ok(cm.airtable === false && cm.airtableBase === null, 'a non-Airtable import is not marked Airtable');
 
 const tbl = DB.buildTable('Client Info', rs);
 ok(tbl.rows.length === 2 && tbl.cols.some(c => c.name === 'First Name') && !tbl.cols.some(c => c.name.startsWith('_')),

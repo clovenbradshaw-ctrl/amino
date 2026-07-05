@@ -60,6 +60,37 @@ live re-folds.
   Related Individuals (CON edges) and the Airtable-style Database view all render
   from the fold.
 
+## Sync from Airtable
+
+Two-way sync with Airtable is a **three-step** flow. It's dormant until you
+import a base, and it follows exactly the tables you imported.
+
+1. **Import a base** — rail → **Import Airtable**. Paste a personal-access token,
+   pick a base and its tables, and pull the schema + records in. Each imported
+   table becomes a Database set (**Client Info**, case tables, etc.). *(Needs a
+   live workspace — demo data can't sync.)*
+
+2. **Connect a token for ongoing sync** — **Sync & storage** page → *Airtable
+   two-way sync*. Paste a token once; it's **sealed with the workspace key
+   before it leaves the tab** (the homeserver only ever stores ciphertext, and it
+   never enters the event log), so one member's token lights up sync for everyone
+   in the room. The token needs `schema.bases:read`, `data.records:read`, and
+   `webhook:manage`.
+
+3. **Data flows both ways:**
+   - **To Airtable** — your edits push automatically; everyone pushes their own.
+   - **From Airtable** — pulling is **turn-based** so clients don't all replay the
+     same changes and race the cursor: *raise your hand* to take a turn (exactly
+     one member pulls at a time, and the turn passes on if they drop off).
+
+**Refreshing one table on demand.** You don't need a turn for a single table.
+Open it in the Database view — an Airtable-sourced table shows a **"Synced from
+Airtable"** pill and a **Sync from Airtable** button in the header. That button
+re-snapshots just that table (available to anyone with the shared token, and it
+never disturbs the live diff stream). If no token is connected yet, the button
+sends you to the Sync page to connect one. The same per-table controls also live
+on the Sync page under *Airtable two-way sync*.
+
 ## Develop
 
 ```bash

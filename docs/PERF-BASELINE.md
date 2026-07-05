@@ -21,12 +21,18 @@ All times in ms. `parse+materialize` and `loadSet` are one-time per import (the
 worker keeps them off the main thread); every `query()` row returns only the
 requested window + counts.
 
-| Rows | parse+materialize | loadSet | first paint (page 1) | filter `is` (cached idx) | group counts | sort page 1 | search (linear) | peak RSS |
+| Rows | parse+materialize | loadSet | first paint (page 1) | filter `is` (cached idx) | group counts | sort page 1 | search (cached blob) | peak RSS |
 |------|------|------|------|------|------|------|------|------|
-| 10k   |   38 |   8 | 0.5 | 0.2 |  3 |   7 |   8 |  88 MB |
-| 100k  |  273 |  60 | 0.5 | 0.3 |  9 |  14 |  38 | 191 MB |
-| 500k  | 1284 | 271 | 0.6 | 0.5 | 35 | 169 | 261 | 587 MB |
-| 1M    | 2642 | 800 | 0.5 | 0.9 | 67 | 111 | 334 | 771 MB |
+| 10k   |   38 |   8 | 0.5 | 0.2 |  3 |   7 |  0.9 |  90 MB |
+| 100k  |  273 |  60 | 0.5 | 0.3 |  9 |  14 |  6.2 | 221 MB |
+| 500k  | 1284 | 271 | 0.6 | 0.5 | 35 | 169 | 22.8 | 601 MB |
+| 1M    | 2642 | 800 | 0.5 | 0.9 | 67 | 111 | 37.7 | 1142 MB |
+
+The **search** column is the steady-state cost (blob cached). The first search of
+a set additionally builds the lowercased blob once — 8 ms (10k), 68 ms (100k),
+381 ms (500k), 651 ms (1M) — folded into that first query; every search after is
+the number above. Peak RSS now holds that per-row blob (~40 chars/row); it is
+built only for sets that are actually searched.
 
 Notes:
 - **First paint** and **cached-index filter** stay ~flat (≈0.5 ms) from 10k→1M —
@@ -37,8 +43,15 @@ Notes:
 - **Group** and **sort** are inherently over the whole set; both stay well under
   the interactive bar at 1M. A precomputed sort permutation (Phase 5 follow-up)
   would cut sort further.
-- **Free-text search** is still a linear column scan (334 ms at 1M) — the one
-  place a token/postings inverted index (Phase 5 follow-up) is still owed.
+- **Free-text search** now folds each row's text into one cached lowercased blob
+  (a single pass over the already-materialized columns, no second traversal), so
+  a search is one `includes()` per row instead of re-coercing every cell on every
+  keystroke: **334 ms → 38 ms at 1M**, under the 150 ms bar. It stays a linear
+  pass (no per-term inverted index to build or hold ~1 GB for); the blob costs one
+  string per row and is built on first search. A per-term postings index would
+  push search to O(matches) but only earns its ~9 s build / ~1 GB at volumes past
+  the firm's, and belongs in the worker (see below) rather than a main-thread
+  keystroke — deliberately not built.
 
 ## Acceptance bar (definition of done) — status
 
@@ -46,7 +59,8 @@ On a 1M-row set, data layer:
 
 - First paint of a page **≤ 500 ms** → **0.5 ms** ✅
 - Switching tabs / filtering / grouping **≤ 200 ms** → group 67 ms, sort 111 ms, filter <1 ms ✅
-- Search results page **≤ 150 ms** → **334 ms linear** ⏳ (needs the search index)
+- Search results page **≤ 150 ms** → **38 ms** ✅ (cached lowercased search blob;
+  first search of a set pays a one-time 651 ms blob build at 1M, ~68 ms at 100k)
 - Peak heap scales with columns + one viewport, **not** the full object graph —
   the 1M rows live in the columnar store, never in `state.entities` ✅ (RSS 771 MB
   holds the columns; the transient row objects are dropped after `loadSet`)
