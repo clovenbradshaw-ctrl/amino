@@ -1290,6 +1290,15 @@ class Component extends DCLogic {
       meSub:(S.session&&S.session.userId)?('signed in · '+(String(S.session.userId).split(':')[1]||this.HOMESERVER.replace(/^https?:\/\//,''))):'app.aminoimmigration.com',
       // Spaces launchpad → a way into the Sync & storage page too.
       onOpenSync:()=>this.openSync(),
+      // Data actions, shown in the EXPANDED rail (the collapsed rail only had
+      // these as icons, so an open rail had no way to reach Import Airtable / the
+      // Sync page). Import is disabled until a live workspace is open.
+      railActions:[
+        {name:'Import Airtable',icon:'table',onPick:()=>this.openAirtable(),
+          bg:'transparent',color:(!this.demo&&this.curWs)?'#46505B':'#AEB4BC',icolor:(!this.demo&&this.curWs)?'#8F95A0':'#C6CAD0',weight:'600'},
+        {name:'Sync & storage',icon:'cloud-arrow-down',onPick:()=>this.openSync(),
+          bg:isSync?'#FBF3E2':'transparent',color:isSync?'#8A5A14':'#46505B',icolor:isSync?'#C2872B':'#8F95A0',weight:isSync?'700':'600'},
+      ],
       // ── Airtable two-way sync surfaces (raw-React globals mounted via <x-import>) ──
       // The import dialog (window.AirtableSchemaModal) opens over everything; the
       // Sync-page panel (window.AirtableSyncPanel) shares/reads the WCK-sealed PAT,
