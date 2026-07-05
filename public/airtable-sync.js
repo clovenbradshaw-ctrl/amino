@@ -70,9 +70,11 @@
  *                                       // one-shot per-table re-snapshot, no RUN / no turn
  *   window.AirtableSync.status()        // { running, cursor, lastSync, lastError, watching }
  *
- * This module is PULL only. The symmetric push (operator log → Airtable upsert
- * on a `_anchor` merge field) is a separate drain; the provenance hooks it needs
- * are noted inline (`_origin` on synced entities, `fromSources` on the webhook).
+ * This module is PULL only. The symmetric PUSH (workspace edits → Airtable) is
+ * airtable-push.js, which relies on the provenance this module stamps: `_origin`
+ * + `_recordId` on synced entities identify a row's upstream record, and the
+ * webhook's `fromSources:["client"]` excludes push's own API writes from the
+ * inbound diff so the two directions never echo each other.
  */
 
 (function () {

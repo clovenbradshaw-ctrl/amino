@@ -10873,6 +10873,38 @@ class Component extends DCLogic {
     let best=null,n=-1; for(const k in tally){ if(tally[k]>n){ n=tally[k]; best=k; } }
     return best;
   }
+  // The set names this workspace imported from `baseId` (Airtable-sourced), read
+  // from the base fold's import carriers. Drives the push-promotion guard below.
+  _airtableSetNames(baseId){
+    const out=new Set(), ents=((this._liveState||{}).entities)||{};
+    for(const a in ents){ const e=ents[a]; if(e&&e._type==='import'&&e.source==='airtable'&&(!baseId||e.airtable_base===baseId)&&e.derived_set) out.add(e.derived_set); }
+    return out;
+  }
+  // Copy-on-write PROMOTE for the outbound (push) path — the symmetric partner of
+  // airtable-sync.js's inbound `instantiate`. Most imported rows live only in the
+  // cold blob (not in the fold), so editing one emits a bare DEF on an anchor the
+  // fold doesn't yet know as a first-class entity — invisible to airtable-push.js.
+  // On the FIRST local edit of such a row we INS it whole (typed by its set,
+  // carrying its Airtable `_recordId` + `_origin`) so the row becomes a synced
+  // entity the push drain maps to its upstream record. Idempotent + guarded: only
+  // fires for rows of an Airtable-imported set that carry a `_recordId` and aren't
+  // already folded; a one-shot `_promoted` set avoids a duplicate INS before the
+  // next refold lands. Any uncertainty → no-op, so editing never breaks.
+  async _ensurePushable(anchor){
+    try{
+      if(this.demo||!anchor||!this.curWs) return;
+      if(!this._promoted) this._promoted=new Set();
+      if(this._promoted.has(anchor)) return;
+      const be=(((this._liveState||{}).entities)||{})[anchor];
+      if(be&&be._type&&be._type!=='import') return;             // already first-class
+      const re=(((this._renderState||this._liveState||{}).entities)||{})[anchor];
+      if(!re||!re._recordId) return;                            // not an imported record
+      const setName=re._type; if(!setName) return;
+      if(!this._airtableSetNames(this.airtableBaseId()).has(setName)) return;
+      this._promoted.add(anchor);
+      await this.emitOp(this.curWs, this.ME().OP.INS, { anchor, entity_type:setName, payload:{ _recordId:re._recordId, _origin:'airtable' } });
+    }catch(e){}
+  }
 
   // Attach/detach window.AirtableCoord for the open room. Idempotent: keyed on
   // (roomId|baseId) so a re-fold doesn't re-attach, and only a real change (room
@@ -11125,7 +11157,7 @@ class Component extends DCLogic {
   label(k){ return {'A#':'A#','Client_Photo':'Client Photo','PP':'Practice Panther','box_shared_link':'box link','USCIS FOIA':'USCIS FOIA','Client Name':'Client Name'}[k]||k; }
   age(mdy){ const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(mdy||''); if(!m)return '—'; const d=new Date(+m[3],+m[1]-1,+m[2]); const n=new Date(2026,5,13); let a=n.getFullYear()-d.getFullYear(); if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--; return String(a); }
   rawVal(ci,k){ const S=this.state, ov=S.vals[ci+'::'+k]; if(ov!==undefined)return ov; const c=this.clients[ci]; if(!c)return ''; if(k==='Age')return this.age(c.f['DOB']); if(k==='Client Name')return (c.f['Family Name']||'')+', '+(c.f['First Name']||''); return c.f[k]; }
-  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ await this.emitOp(this.curWs, this.ME().OP.DEF, { anchor:c.anchor, path:k, value:v }); if(this.demo) this.scheduleRefold(); }catch(e){} }
+  async setVal(ci,k,v){ const c=this.clients[ci]; this.setState(s=>({vals:Object.assign({},s.vals,{[ci+'::'+k]:v})})); if(!c||!c.anchor||!this.curWs)return; try{ await this._ensurePushable(c.anchor); await this.emitOp(this.curWs, this.ME().OP.DEF, { anchor:c.anchor, path:k, value:v }); if(this.demo) this.scheduleRefold(); }catch(e){} }
   curLayout(){ return this.state.layouts[this.state.layout]; }
   mutate(fn){ this.setState(s=>{ const L=JSON.parse(JSON.stringify(s.layouts)); fn(L[s.layout]); return {layouts:L}; }); }
 
@@ -11774,6 +11806,7 @@ class Component extends DCLogic {
      exist in AMINO — these just light them up. -->
 <script src="airtable-schema.js"></script>
 <script src="airtable-sync.js"></script>
+<script src="airtable-push.js"></script>
 <script src="airtable-coordinator.js"></script>
 <!-- Babel transforms the two JSX view modules into window.AirtableSchemaModal
      (the import dialog) and window.AirtableSyncPanel (the Sync-page surface),

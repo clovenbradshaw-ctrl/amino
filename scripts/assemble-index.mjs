@@ -84,6 +84,7 @@ const html = `<!doctype html>
      exist in AMINO — these just light them up. -->
 <script src="airtable-schema.js"></script>
 <script src="airtable-sync.js"></script>
+<script src="airtable-push.js"></script>
 <script src="airtable-coordinator.js"></script>
 <!-- Babel transforms the two JSX view modules into window.AirtableSchemaModal
      (the import dialog) and window.AirtableSyncPanel (the Sync-page surface),
