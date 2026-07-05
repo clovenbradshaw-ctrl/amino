@@ -93,6 +93,12 @@ vm = c.renderVals();
 ok(vm.clients.length === 2, 'render: client list shows folded clients');
 ok(/Lopez|San Juan/.test(vm.cur.name), 'render: record panel header is a real client');
 ok(vm.segCrmWeight === '700' && vm.segDbWeight === '600', 'view toggle highlights Clients in the CRM view');
+// The expanded rail exposes the data actions (Import Airtable / Sync & storage) —
+// previously only reachable by collapsing the rail — plus the wired Add-table +.
+ok(Array.isArray(vm.railActions) && vm.railActions.some(a => a.name === 'Import Airtable') && vm.railActions.some(a => a.name === 'Sync & storage'),
+   'expanded rail exposes Import Airtable + Sync & storage actions');
+ok(typeof vm.railActions.find(a => a.name === 'Import Airtable').onPick === 'function', 'the Import Airtable rail action is wired');
+ok(typeof vm.onOpenAirtable === 'function', 'the Add-table + is wired to open the Airtable import');
 
 // 3b) the Database view (only computed on the db screen) shows every real set
 c.state.view = 'db';
