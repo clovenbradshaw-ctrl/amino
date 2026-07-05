@@ -91,14 +91,14 @@ class Component extends DCLogic {
     // Database grid windowing — render only a bounded slice of rows into the DOM
     // (grows on scroll / "Load more"), so a 12k-row imported sheet can't explode
     // the DOM and crash the tab. DB_PAGE is the initial + per-step row count.
-    this.DB_PAGE=100; this._dbHasMore=false; this._scrollHooked=false;
+    this.DB_PAGE=100; this._dbHasMore=false; this._scrollHooked=false; this.DB_COL_MIN=80; this.DB_COL_MAX=640;
     this._onAnyScroll=this._onAnyScroll.bind(this);
     // Sync & storage page — periodic snapshot of the bridge's sync/storage state.
     this._syncTimer=null; this._preSyncView=null;
     // dbTable:'' / dbView:{} — the Database view is now set-driven (dbModel),
     // not the old fixed three-table map. booting — the cold-boot resume flag
     // from PR #32's duplicate-login fix. Both kept.
-    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, dbShowAllCols:false, syncSnap:null, airtableOpen:false, airtableTicket:0, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
+    this.state={ view:'crm', cur:0, layout:'editClient', customize:false, search:'', dbTable:'', dbSearch:'', dbView:{}, dbViewSearch:'', dbLimit:this.DB_PAGE, dbShowAllCols:false, dbColWidths:{}, syncSnap:null, airtableOpen:false, airtableTicket:0, favs:['editClient'], folderOpen:{client:true,court:true,foia:true}, railCollapsed:false, listCollapsed:false, viewsCollapsed:false, tab:'clientinfo', panelView:'clients', railWidth:212, dbRecord:null, vals:{}, ef:null, draft:'', noteDraft:'', layouts:JSON.parse(JSON.stringify(this.DEF)), extraNotes:{},
       connected:false, connecting:false, booting:false, wsSyncing:false, demo:false, session:null, loginHs:this.HOMESERVER, loginUser:'', loginPass:'', loginErr:'', newSpaceName:'', spacePickerOpen:false };
     try{ window.AminoApp=this; }catch(e){}
     // Boot: bind the namespace, subscribe to live changes, and adopt a restored
@@ -929,11 +929,20 @@ class Component extends DCLogic {
     if(populated.size===0||populated.size===cols.length) return cols;
     const head=[],tail=[]; for(const c of cols) (populated.has(c.name)?head:tail).push(c);
     return head.concat(tail); }
+  // Column widths are fixed px, not `fr` — an `fr` track has no ceiling, so a
+  // header with few populated/visible columns stretches to fill whatever
+  // space is left, which reads as "the other columns vanished" even though
+  // they're still there (just off to the right, behind a scrollbar). Fixed
+  // widths give every column a sane default width up front and a hard cap
+  // (DB_COL_MAX) so a single wide value can't do the same thing; dragging the
+  // handle on a header cell (onResizeStart, wired in dbModel) overrides the
+  // default per column, remembered per set in state.dbColWidths.
+  dbDefaultColWidth(i,type){ if(i===0) return 240; return (type==='longtext'||type==='json')?260:180; }
   // The grid's column layout: the leading primary column + the data columns
   // (primary de-duped, empty-last, capped unless "show all fields" is on), plus
   // the matching grid-template track string. Independent of row windowing/search,
   // so dbModel memoizes it (this._colCache) across keystrokes.
-  buildColumns(activeName,built,state,showAll){
+  buildColumns(activeName,built,state,showAll,colWidths){
     const cols=built.cols, rows=built.rows;
     const primaryName=this.primaryFieldName(activeName,cols,state);
     const dataCols=this.orderColsEmptyLast(cols.filter(c=>c.name!==primaryName),rows);
@@ -941,8 +950,21 @@ class Component extends DCLogic {
     const shown=dataCols.slice(0,cap), hiddenCols=dataCols.length-shown.length;
     const columns=[{k:'__name',n:primaryName||'Name',icon:'text-aa',type:'name'}]
       .concat(shown.map(c=>({k:c.name,n:c.name,icon:this.iconForType(c.type),type:c.type})));
-    const dbColTemplate=columns.map((c,i)=> i===0?'minmax(210px,1.4fr)':((c.type==='longtext'||c.type==='json')?'minmax(200px,1.4fr)':'minmax(140px,1fr)')).join(' ');
-    return {columns,dbColTemplate,primaryName,hiddenCols,fieldCount:cols.length,dataColCount:dataCols.length}; }
+    const widths=columns.map((c,i)=>{ const custom=colWidths&&colWidths[c.k];
+      return custom?Math.max(this.DB_COL_MIN,Math.min(this.DB_COL_MAX,custom)):this.dbDefaultColWidth(i,c.type); });
+    const dbColTemplate=widths.map(w=>w+'px').join(' ');
+    return {columns,dbColTemplate,colWidths:widths,primaryName,hiddenCols,fieldCount:cols.length,dataColCount:dataCols.length}; }
+  // Drag-resize a column header, same mousemove/mouseup pattern as the rail
+  // resizer (onResizeStart) — widths persist per set so switching tables or
+  // reloading a view keeps what you set.
+  _startColResize(e,activeName,key,startWidth){
+    e.preventDefault(); e.stopPropagation();
+    const sx=e.clientX, sw=startWidth, MIN=this.DB_COL_MIN, MAX=this.DB_COL_MAX;
+    const move=(ev)=>{ let w=sw+(ev.clientX-sx); w=Math.max(MIN,Math.min(MAX,w));
+      this.setState(st=>({dbColWidths:Object.assign({},st.dbColWidths,{[activeName]:Object.assign({},(st.dbColWidths||{})[activeName],{[key]:w})})})); };
+    const up=()=>{ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.body.style.userSelect=''; document.body.style.cursor=''; };
+    document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+    document.body.style.userSelect='none'; document.body.style.cursor='col-resize'; }
 
   // ── Database grid windowing plumbing ──
   // One capture-phase scroll listener on the document catches the grid scroll
@@ -1018,14 +1040,17 @@ class Component extends DCLogic {
     // Hidden fields drop out before layout; the rest are ordered/capped as before,
     // then annotated with click-to-sort (cycles asc/desc/off) + a hide affordance.
     const visibleCols=hidden.length?built.cols.filter(c=>hidden.indexOf(c.name)<0):built.cols;
-    const layout=this.buildColumns(activeName,{cols:visibleCols,rows:windowRows},state,!!S.dbShowAllCols);
+    const colWidths=(S.dbColWidths||{})[activeName];
+    const layout=this.buildColumns(activeName,{cols:visibleCols,rows:windowRows},state,!!S.dbShowAllCols,colWidths);
     const primaryName=layout.primaryName;
     const dirOf=(f)=>{ const k=(spec.sort||[]).find(s=>s.field===f); return k?k.dir:''; };
-    const columns=layout.columns.map(col=>{
+    const columns=layout.columns.map((col,i)=>{
       const f=(col.k==='__name')?primaryName:col.k, dir=f?dirOf(f):'';
+      const startWidth=layout.colWidths[i];
       return Object.assign({},col,{ sortIcon: dir==='asc'?'arrow-up':dir==='desc'?'arrow-down':'',
         onSort: f?(()=>this._cycleSort(activeName,f)):(()=>{}),
-        onHide: (f&&col.k!=='__name')?(()=>this._hideField(activeName,f)):null });
+        onHide: (f&&col.k!=='__name')?(()=>this._hideField(activeName,f)):null,
+        onResizeStart: (e)=>this._startColResize(e,activeName,col.k,startWidth) });
     });
     const dbRows=windowRows.map(e=>{ const label=this.primaryLabel(e,primaryName); return {cursor:'pointer',onOpen:()=>this.setState({dbRecord:{set:activeName,anchor:e._anchor}}),cells:columns.map((col,i)=>this.dbCell(e,col,label,i))}; });
     const moreCount=Math.min(300,total-windowRows.length);
@@ -1124,7 +1149,7 @@ class Component extends DCLogic {
       dbAtConnected:!!(atS&&atS.connected),
       onDbSyncAirtable:()=>this._syncTableFromAirtable(activeName),
       dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
-      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
+      dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide,onResizeStart:c.onResizeStart})), dbColTemplate, dbRows,
       // Grouping: the group-by field's counts as chips above the grid (kanban's
       // substrate); empty when no grouping is active.
       dbGrouped:!!groupField&&dbIsTable, dbGroupField:groupField, dbGroups, onDbClearGroup:()=>this._patchSpec(activeName,{group:null}),

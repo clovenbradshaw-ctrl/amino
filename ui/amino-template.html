@@ -10382,7 +10382,10 @@
       <div style="min-width:max-content">
         <div style="display:grid;grid-template-columns:{{ dbColTemplate }};position:sticky;top:0;z-index:5;background:#F1F3F5;border-bottom:1px solid #DDE2E7">
           <sc-for list="{{ dbColumns }}" as="c" hint-placeholder-count="6">
-            <div onclick="{{ c.onSort }}" title="Sort by {{ c.name }}" style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-right:1px solid #E4E7EB;font-size:11.5px;font-weight:600;color:#46505B;overflow:hidden;cursor:pointer"><i class="ph ph-{{ c.icon }}" style="font-size:13px;color:#9aa3ad;flex-shrink:0"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span><sc-if value="{{ c.hasSort }}" hint-placeholder-val="{{ false }}"><i class="ph ph-{{ c.sortIcon }}" style="font-size:11px;color:#C2872B;margin-left:auto;flex-shrink:0"></i></sc-if></div>
+            <div style="position:relative;display:flex;align-items:center;gap:7px;padding:9px 12px;border-right:1px solid #E4E7EB;font-size:11.5px;font-weight:600;color:#46505B;overflow:hidden">
+              <div onclick="{{ c.onSort }}" title="Sort by {{ c.name }}" style="display:flex;align-items:center;gap:7px;overflow:hidden;cursor:pointer;flex:1;min-width:0"><i class="ph ph-{{ c.icon }}" style="font-size:13px;color:#9aa3ad;flex-shrink:0"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span><sc-if value="{{ c.hasSort }}" hint-placeholder-val="{{ false }}"><i class="ph ph-{{ c.sortIcon }}" style="font-size:11px;color:#C2872B;margin-left:auto;flex-shrink:0"></i></sc-if></div>
+              <div onmousedown="{{ c.onResizeStart }}" title="Drag to resize" style="position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:1"></div>
+            </div>
           </sc-for>
         </div>
         <sc-for list="{{ dbRows }}" as="r" hint-placeholder-count="10">
