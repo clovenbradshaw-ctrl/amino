@@ -453,6 +453,38 @@ class Component extends DCLogic {
     this._atCoordSig='';
     try{ const C=window.AirtableCoord; if(C&&C.status&&C.status().attached) C.detach(); }catch(e){}
   }
+  // Compact relative time ("5m ago") for sync timestamps in the grid header.
+  _relTime(ts){ if(!ts) return ''; const d=Date.now()-ts; if(d<5000) return 'just now'; if(d<60000) return Math.floor(d/1000)+'s ago'; if(d<3600000) return Math.floor(d/60000)+'m ago'; if(d<86400000) return Math.floor(d/3600000)+'h ago'; return Math.floor(d/86400000)+'d ago'; }
+  // Read-only snapshot of the Airtable sync state for the open room, from the
+  // same globals the Sync-page panel uses. Defensive: absent globals → dormant.
+  _airtableStatus(){
+    let cs={}; try{ const C=window.AirtableCoord; cs=(C&&C.status)?C.status():{}; }catch(e){}
+    let info={}; try{ const ML=this.ML&&this.ML(); info=(ML&&ML.getAirtableTokenInfo)?ML.getAirtableTokenInfo(this.curWs):{}; }catch(e){}
+    return {
+      attached:!!cs.attached,
+      connected:!!(info&&info.shared),          // a token is shared for the room
+      ready:!!(info&&info.haveToken),            // …and unsealed on this device
+      pulling:!!(cs.pull&&cs.pull.running),
+      lastPull:(cs.pull&&cs.pull.lastSync)||null,
+    };
+  }
+  // Pull one table from Airtable on demand, right from the grid. Routes through
+  // the coordinator's per-table sweep (any member with the shared token, no turn
+  // needed) — the same call the Sync-page panel makes. With no token shared yet,
+  // it guides the user to the Sync page to connect one, answering "how do I sync
+  // from Airtable" where they actually look at the table.
+  _syncTableFromAirtable(name){
+    if(!name||this._atSyncing) return;
+    const st=this._airtableStatus();
+    if(!st.connected){ this.toast('Connect an Airtable token on the Sync page to pull updates from Airtable.'); if(this.openSync) this.openSync(); return; }
+    const C=window.AirtableCoord;
+    if(!C||!C.syncTableOnce){ this.toast('Airtable sync isn’t ready yet — open the Sync page to check the connection.'); if(this.openSync) this.openSync(); return; }
+    this._atSyncing=name; this.setState({});
+    Promise.resolve(C.syncTableOnce(name))
+      .then(()=>{ this.toast('Synced “'+name+'” from Airtable.'); })
+      .catch(e=>{ this.toast('Airtable sync failed: '+((e&&e.message)||e)); })
+      .then(()=>{ this._atSyncing=null; this.setState({}); });
+  }
 
   // The Airtable import dialog (window.AirtableSchemaModal) — connect with a PAT,
   // pick a base, pull its schema + records into this workspace. A fresh ticket
@@ -947,7 +979,24 @@ class Component extends DCLogic {
       .filter(v=>{ const vq=S.dbViewSearch.trim().toLowerCase(); return !vq||v.name.toLowerCase().includes(vq); });
     const activeView=savedList.find(x=>this._specKey(this._viewSpecFromSaved(x.v))===curKey);
     const onDbSaveView=()=>{ const nm=(typeof prompt==='function')?prompt('Name this view'):null; if(nm&&nm.trim()) this._saveView(activeName,nm.trim()); };
+    // Airtable status for the active table — surfaced inline so "how do I sync
+    // from Airtable" is answered where the user looks, not buried on the Sync
+    // page. The pill states provenance; the button pulls this table on demand
+    // (or, if no token is connected, points to the Sync page to connect one).
+    const atS=active.airtable?this._airtableStatus():null;
+    const atSyncing=this._atSyncing===activeName;
+    let dbAtLabel='', dbAtBg='transparent', dbAtColor='#8F95A0', dbAtCta='', dbAtIcon='table';
+    if(active.airtable){
+      if(!atS.connected){ dbAtLabel='From Airtable · not connected'; dbAtBg='#FBF3E2'; dbAtColor='#8A5A14'; dbAtCta='Connect Airtable'; dbAtIcon='plug'; }
+      else { const lp=atS.lastPull?this._relTime(atS.lastPull):''; dbAtLabel='Synced from Airtable'+(lp?(' · pulled '+lp):''); dbAtBg='#EAF6F0'; dbAtColor='#0F7048'; dbAtCta='Sync from Airtable'; dbAtIcon='cloud-arrow-down'; }
+    }
     return Object.assign({
+      // ── Airtable link + on-demand pull (flat bindings; see _airtableStatus) ──
+      dbIsAirtable:!!active.airtable, dbAtBase:(active.airtableBase||''),
+      dbAtLabel, dbAtBg, dbAtColor, dbAtIcon,
+      dbAtCta:atSyncing?'Syncing…':dbAtCta, dbAtSyncing:atSyncing,
+      dbAtConnected:!!(atS&&atS.connected),
+      onDbSyncAirtable:()=>this._syncTableFromAirtable(activeName),
       dbName:activeName, dbCount:String(active.expected||active.localRows||total), dbFieldCount:layout.fieldCount,
       dbTabs:tabs, dbColumns:columns.map(c=>({name:c.n,icon:c.icon,sortIcon:c.sortIcon,hasSort:!!c.sortIcon,onSort:c.onSort,onHide:c.onHide})), dbColTemplate, dbRows,
       // Grouping: the group-by field's counts as chips above the grid (kanban's

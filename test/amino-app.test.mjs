@@ -255,6 +255,34 @@ c8a.state.dbSearch = 'fam299';
 v8a = c8a.renderVals();
 ok(v8a.dbTotal === 1 && v8a.dbRows.length === 1, 'store grid: search is a windowed query() over the store');
 ok(v8a.dbRows[0].cells[0].text === 'Fam299', 'store grid: the matching row renders');
+ok(c8a.renderVals().dbIsAirtable === false, 'store grid: a non-Airtable import shows no Airtable affordance');
+
+// 8a-2) An Airtable-sourced table surfaces its provenance + an on-demand pull in
+// the grid header — answering "how do I sync from Airtable" where the user looks,
+// not on a settings page. With no token globals stubbed, _airtableStatus reports
+// not-connected, so the CTA routes the user to connect a token.
+const cAt = new Component({});
+const impAt = ME.makeAnchor('import', { s: 'Cases' }, '@a', 9);
+const atState = ME.fold([
+  ev(ME.OP.DEF, { anchor: null, path: '_schema.tables', value: ['Cases'] }),
+  ev(ME.OP.INS, { anchor: impAt, entity_type: 'import', payload: {} }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'derived_set', value: 'Cases' }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'field_plan', value: [{ name: 'Matter', csvIdx: 0, type: 'text' }] }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'rows_imported', value: 1 }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'source', value: 'airtable' }),
+  ev(ME.OP.DEF, { anchor: impAt, path: 'airtable_base', value: 'appZZ' }),
+]);
+cAt.curWs = '!ws1'; cAt.workspaces = [{ roomId: '!ws1', name: 'W' }];
+cAt.state.connected = true; cAt.state.view = 'db'; cAt.state.dbTable = 'Cases';
+cAt._liveState = atState; cAt._renderState = atState;
+cAt._importRows = { [impAt]: [{ _anchor: impAt + '#r0', _type: 'Cases', Matter: 'Doe' }] };
+cAt._syncRowStore(atState);
+const vAt = cAt.renderVals();
+ok(vAt.dbIsAirtable === true, 'db: an Airtable-sourced table is flagged in the grid header');
+ok(vAt.dbAtBase === 'appZZ', 'db: the Airtable base id is exposed to the header');
+ok(/Airtable/.test(vAt.dbAtLabel), 'db: the status pill names Airtable');
+ok(vAt.dbAtConnected === false && vAt.dbAtCta === 'Connect Airtable', 'db: with no token shared, the CTA points to connecting Airtable');
+ok(typeof vAt.onDbSyncAirtable === 'function', 'db: the header exposes a sync-from-Airtable action');
 
 // 8b) Column layout — Airtable/Softr fidelity. The grid leads with the table's
 // PRIMARY field, shown once (no synthetic-"Name" + real-"Name" duplicate), and a

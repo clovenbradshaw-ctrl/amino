@@ -236,6 +236,10 @@
       const isImport = imps.length > 0;
       const expectedImported = imps.reduce((s, e) => s + (e.rows_imported || 0), 0);
       const localRows = rowsByType[name] || 0;
+      // Airtable provenance — surfaced so the Database view can show a table is
+      // Airtable-linked and offer a pull, instead of hiding sync on a settings
+      // page. A set is Airtable-sourced if any of its import carriers is.
+      const atImp = imps.find(e => e.source === 'airtable');
       return {
         name,
         localRows,
@@ -243,6 +247,8 @@
         isImport,
         chunksTotal: imps.length,
         declared: declared.includes(name),
+        airtable: !!atImp,
+        airtableBase: atImp ? (atImp.airtable_base || null) : null,
       };
     }).sort((a, b) => (b.expected - a.expected) || a.name.localeCompare(b.name));
   }
